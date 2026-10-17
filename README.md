@@ -4,8 +4,6 @@
 
 Built for the Tyks Laboratories challenge at Junction x Turku 2026. Live demo: [amright.mankeli.co](https://amright.mankeli.co) (synthetic data only).
 
-![Technical architecture](docs/architecture.svg)
-
 ## The problem
 
 Resistance is reported once a year, at hospital level. That is too coarse and too late for a doctor who has to pick an antibiotic before the culture result comes back, and too slow to catch an outbreak on a single ward. The challenge asked for a tool that shows the last four weeks beside the annual picture, filters on the dataset's parameters, and detects deviations, without being "just another BI dashboard".
