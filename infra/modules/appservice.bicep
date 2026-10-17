@@ -60,6 +60,17 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
+// Keep the container's stdout and the application log on the file system, so `az webapp log download`
+// and `az webapp log tail` show what the app printed (platform logs alone do not).
+resource logs 'Microsoft.Web/sites/config@2023-12-01' = {
+  parent: site
+  name: 'logs'
+  properties: {
+    applicationLogs: { fileSystem: { level: 'Information' } }
+    httpLogs: { fileSystem: { enabled: true, retentionInMb: 35, retentionInDays: 3 } }
+  }
+}
+
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }

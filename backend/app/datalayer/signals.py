@@ -20,10 +20,13 @@ Nothing here knows an outbreak date or ward. Results for a day use only data up 
 they are cached per store and reused for any as_of.
 """
 
+import hashlib
+import json
 import threading
 import weakref
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
 from scipy.stats import beta as beta_dist
@@ -71,6 +74,56 @@ def _drug_stratum(store: DataStore) -> pd.DataFrame:
     return S._stratum(store, FILTERS)
 
 
+CACHE_FILE = Path(__file__).resolve().parent.parent / "signals_cache.json"  # built in CI, see scripts/build_signals.py
+_SOURCES = [Path(__file__), Path(S.__file__), Path(S.__file__).parent.parent / "shrinkage.py"]
+
+
+def fingerprint(store: DataStore) -> str:
+    """Changes whenever the rule, the maths behind it or the data change, so a stale file is never used."""
+    c = store.tables.cultures
+    parts = {
+        "rule": [WINDOW_DAYS, CONFIDENCE, MIN_CASES, PHENOTYPE_MARGIN, DRUG_MARGIN, MIN_DRUGS, sorted(PHENOTYPE_FLAGS)],
+        "data": [len(c), len(store.tables.isolates), len(store.tables.susceptibility), str(c["sample_date"].max().date())],
+        "code": [hashlib.sha256(f.read_bytes()).hexdigest() for f in _SOURCES],
+    }
+    return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()
+
+
+def build_cache(store: DataStore, days: list[date], path: Path = CACHE_FILE) -> int:
+    """Compute the hits for every day and write them with the fingerprint. Returns days with a hit."""
+    out = {d.isoformat(): [asdict(h) for h in _compute(store, d)] for d in days}
+    path.write_text(json.dumps({"fingerprint": fingerprint(store), "days": out}), encoding="utf-8")
+    return sum(1 for v in out.values() if v)
+
+
+def load_cache(store: DataStore, path: Path = CACHE_FILE) -> dict[date, list[Hit]] | None:
+    """The precomputed hits, or None when there is no file or it was built for other code or data."""
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if raw.get("fingerprint") != fingerprint(store):
+            return None
+        return {date.fromisoformat(d): [Hit(**h) for h in hs] for d, hs in raw["days"].items()}
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+_precomputed: "weakref.WeakKeyDictionary[DataStore, dict[date, list[Hit]] | None]" = weakref.WeakKeyDictionary()
+
+
+def _from_file(store: DataStore, day: date) -> list[Hit] | None:
+    with _lock:
+        known = store in _precomputed
+    if not known:
+        loaded = load_cache(store)
+        with _lock:
+            _precomputed[store] = loaded
+    with _lock:
+        cache = _precomputed[store]
+    return None if cache is None else cache.get(day)
+
+
 class _Strata:
     def __init__(self, store: DataStore):
         self.phenotype = _phenotype_stratum(store)
@@ -107,12 +160,7 @@ def _evaluate(store: DataStore, day: date, kind: str, stratum: pd.DataFrame, mar
     return out
 
 
-def hits_on(store: DataStore, day: date) -> list[Hit]:
-    """Cells above the hospital rate on `day`, from data up to `day`. Cached."""
-    with _lock:
-        cache = _hits.setdefault(store, {})
-        if day in cache:
-            return cache[day]
+def _compute(store: DataStore, day: date) -> list[Hit]:
     strata = _strata_for(store)
     phenotype = _evaluate(store, day, "phenotype", strata.phenotype, PHENOTYPE_MARGIN)
     drugs = _evaluate(store, day, "drug", strata.drug, DRUG_MARGIN)
@@ -121,7 +169,22 @@ def hits_on(store: DataStore, day: date) -> list[Hit]:
         by_group.setdefault((h.ward, h.organism), []).append(h)
     # one outbreak lights several drugs; a single drug above the hospital rate is not enough
     drugs = [h for hs in by_group.values() if len(hs) >= MIN_DRUGS for h in hs]
-    result = phenotype + drugs
+    return phenotype + drugs
+
+
+def hits_on(store: DataStore, day: date) -> list[Hit]:
+    """Cells above the hospital rate on `day`, from data up to `day`.
+
+    Read from the precomputed file when it matches this code and data; otherwise computed
+    (about 0.2 s on a laptop, several times that on the small App Service plan) and cached.
+    """
+    with _lock:
+        cache = _hits.setdefault(store, {})
+        if day in cache:
+            return cache[day]
+    result = _from_file(store, day)
+    if result is None:
+        result = _compute(store, day)
     with _lock:
         _hits[store][day] = result
     return result

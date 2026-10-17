@@ -43,7 +43,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with: { python-version: "3.12", cache: pip }
+      - name: Precompute the alert signals (otherwise the app spends minutes on it after every deploy)
+        run: |
+          pip install -e .
+          python scripts/build_signals.py
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}

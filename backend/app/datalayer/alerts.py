@@ -176,7 +176,11 @@ def _first_eval_day(store: DataStore) -> date:
 
 
 def warm_up(store: DataStore) -> None:
-    """Compute every weekly signal once (about 12 s) so no request pays for it. Run in a thread."""
+    """Fill the caches so no request pays for them. Run in a thread at startup.
+
+    With the precomputed signals file this is instant. Without it the weekly signals are computed
+    (about 12 s on a laptop, minutes on the small App Service plan).
+    """
     sig.warm_up(store, _first_eval_day(store), store.tables.cultures["sample_date"].max().date())
     tr.trends(store, store.tables.cultures["sample_date"].max().date())
 

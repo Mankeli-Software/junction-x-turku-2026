@@ -257,3 +257,35 @@ def test_hospital_wide_alert_validates_over_the_api():
     trend = [a for a in r.json()["alerts"] if a["type"] == "trend"]
     assert trend and trend[0]["ward"] is None
     assert client.get("/v1/alerts/detail?alert_id=trend-escherichia-coli-TMP").status_code == 200
+
+
+# ---- precomputed signals ----------------------------------------------------------------------
+
+
+def test_precomputed_signals_equal_computed_ones(store, tmp_path):
+    days = [date(2025, 6, 9), date(2025, 6, 10), date(2026, 3, 19)]  # before, at and after the first alerts
+    path = tmp_path / "signals_cache.json"
+    sig.build_cache(store, days, path)
+    loaded = sig.load_cache(store, path)
+    assert set(loaded) == set(days)
+    for d in days:
+        assert loaded[d] == sig._compute(store, d)
+    assert loaded[date(2025, 6, 10)] and not loaded[date(2025, 6, 9)]
+
+
+def test_precomputed_signals_are_ignored_when_stale(store, cut_stores, tmp_path):
+    path = tmp_path / "signals_cache.json"
+    sig.build_cache(store, [date(2025, 6, 10)], path)
+    assert sig.load_cache(store, path) is not None
+    assert sig.load_cache(cut_stores[date(2025, 8, 31)], path) is None  # other data: recompute, never reuse
+    path.write_text("not json")
+    assert sig.load_cache(store, path) is None
+    assert sig.load_cache(store, tmp_path / "missing.json") is None
+
+
+def test_hits_on_prefers_the_file(store, monkeypatch):
+    fake = sig.Hit("URO", "Escherichia coli", "phenotype", "ESBL", 9, 30, 0.04, 0.3)
+    day = date(2031, 1, 1)  # a day no real computation would ever return a hit for
+    monkeypatch.setitem(sig._precomputed, store, {day: [fake]})
+    assert sig.hits_on(store, day) == [fake]
+    sig._hits[store].pop(day, None)
