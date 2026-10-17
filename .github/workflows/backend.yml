@@ -33,8 +33,25 @@ jobs:
       - run: ruff check backend
       - run: pytest
 
+  # Runs at the same time as the tests. Without the file the app spends minutes computing the
+  # same numbers on the small App Service plan after every deploy.
+  signals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -e .
+      - run: python scripts/build_signals.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signals-cache
+          path: backend/app/signals_cache.json
+          if-no-files-found: error
+          retention-days: 3
+
   deploy:
-    needs: test
+    needs: [test, signals]
     runs-on: ubuntu-latest
     # The App Service build takes about 5 minutes; this is only a ceiling for a run that really is stuck.
     timeout-minutes: 25
@@ -43,11 +60,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12", cache: pip }
-      - name: Precompute the alert signals (otherwise the app spends minutes on it after every deploy)
-        run: |
-          pip install -e .
-          python scripts/build_signals.py
+        with: { python-version: "3.12" }
+      - name: Fetch the precomputed alert signals
+        uses: actions/download-artifact@v4
+        with:
+          name: signals-cache
+          path: backend/app
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -68,10 +86,13 @@ jobs:
           APP=$(az webapp list -g "$RG" --query "[?tags.project=='aei' && tags.env=='demo'].name | [0]" -o tsv)
           echo "APP=$APP" >> "$GITHUB_ENV"
           STARTED=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)  # margin for clock differences with Azure
-          # Upload and return. Waiting inside `az webapp deploy` is one long request that the App Service
-          # gateway cuts off at about 230 s while the build is still running, which failed this step
-          # although the deployment succeeded. Poll the deployment record with short requests instead.
-          az webapp deploy -g "$RG" -n "$APP" --src-path backend.zip --type zip --clean true --async true
+          # `az webapp deploy` holds one long request open while App Service builds (about 4 to 5 minutes,
+          # even with --async), and the gateway in front cuts a request off at about 230 s. That once failed
+          # this step although the deployment had succeeded. So the CLI's exit code is not trusted: App
+          # Service's own deployment record decides, read with short requests.
+          CLI_OK=true
+          az webapp deploy -g "$RG" -n "$APP" --src-path backend.zip --type zip --clean true --async true || CLI_OK=false
+          [[ "$CLI_OK" == true ]] || echo "az reported an error; checking the deployment record instead"
           for i in $(seq 1 90); do
             read -r RECEIVED STATUS COMPLETE < <(az webapp log deployment list -g "$RG" -n "$APP" \
               --query "[0:1].[received_time,status,complete]" -o tsv)
@@ -80,7 +101,9 @@ jobs:
               [[ "$COMPLETE" == "True" && "$STATUS" == "4" ]] && exit 0
               [[ "$STATUS" == "3" ]] && { echo "Deployment failed"; exit 1; }
             else
-              echo "attempt $i: waiting for App Service to receive the package"
+              echo "attempt $i: no new deployment recorded yet"
+              # the upload never arrived: give up after 3 minutes instead of waiting for the full timeout
+              [[ "$CLI_OK" == false && $i -ge 18 ]] && { echo "az failed and App Service has no new deployment"; exit 1; }
             fi
             sleep 10
           done
