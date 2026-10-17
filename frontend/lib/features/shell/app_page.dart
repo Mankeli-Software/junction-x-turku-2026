@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../chat/ask_context.dart';
 import '../chat/widgets/ask_launcher.dart';
 import '../../ds/ds.dart';
+import 'sticky_top_bar.dart';
 import 'top_bar.dart';
 
-/// Page frame: the glow background, the top bar and a scrolling body. The top bar scrolls
-/// with the page, as in the design.
+/// Page frame: the glow background, the top bar and a scrolling body. The top bar stays
+/// pinned while the body scrolls under it ([StickyTopBar]).
 ///
 /// [phoneBar] sticks to the bottom on phones inside the white fade (M-Rules): the ask field,
 /// "Show what works", … Use [StickyAskBar] for the common case.
@@ -29,21 +30,20 @@ class AppPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sticky = phoneBar != null && context.isCompact;
-    final page = LayoutBuilder(
-      builder: (context, box) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: box.maxHeight),
-          child: AmrBackground(
-            glowHeight: glowHeight,
-            child: SafeArea(
-              bottom: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TopBar(trailing: topBarTrailing, subtitle: topBarSubtitle),
-                  body,
-                  if (sticky) const SizedBox(height: 96),
-                ],
+    final page = StickyTopBar(
+      bar: TopBar(trailing: topBarTrailing, subtitle: topBarSubtitle),
+      page: (context, topBar) => LayoutBuilder(
+        builder: (context, box) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: box.maxHeight),
+            child: AmrBackground(
+              glowHeight: glowHeight,
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [topBar, body, if (sticky) const SizedBox(height: 96)],
+                ),
               ),
             ),
           ),

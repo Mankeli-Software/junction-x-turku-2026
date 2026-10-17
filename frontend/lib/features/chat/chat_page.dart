@@ -7,6 +7,7 @@ import '../../core/models/common.dart';
 import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
 import '../../session/session_cubit.dart';
+import '../shell/sticky_top_bar.dart';
 import '../shell/top_bar.dart';
 import 'chat_cubit.dart';
 import 'chat_models.dart';
@@ -99,51 +100,54 @@ class _ChatPageState extends State<ChatPage> {
           return Stack(
             children: [
               Positioned.fill(
-                child: SingleChildScrollView(
-                  controller: _scroll,
-                  child: AmrBackground(
-                    glowHeight: 520,
-                    child: SafeArea(
-                      bottom: false,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TopBar(
-                            breadcrumb: Breadcrumb(const [
-                              'Home',
-                              'Ask',
-                            ], onTapFirst: () => goHome(context)),
-                          ),
-                          Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 1040),
-                              child: Padding(
-                                padding: EdgeInsets.fromLTRB(
-                                  fluid(context, 16, 4, 48),
-                                  compact ? 8 : 24,
-                                  fluid(context, 16, 4, 48),
-                                  compact ? 200 : 220,
+                child: StickyTopBar(
+                  bar: TopBar(
+                    breadcrumb: Breadcrumb(const [
+                      'Home',
+                      'Ask',
+                    ], onTapFirst: () => goHome(context)),
+                  ),
+                  page: (context, topBar) => SingleChildScrollView(
+                    controller: _scroll,
+                    child: AmrBackground(
+                      glowHeight: 520,
+                      child: SafeArea(
+                        bottom: false,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            topBar,
+                            Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 1040),
+                                child: Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    fluid(context, 16, 4, 48),
+                                    compact ? 8 : 24,
+                                    fluid(context, 16, 4, 48),
+                                    compact ? 200 : 220,
+                                  ),
+                                  child: empty
+                                      ? const _Welcome()
+                                      : ColumnGap(
+                                          [
+                                            for (final e in state.entries)
+                                              switch (e) {
+                                                UserEntry() => UserBubble(e.text, short: e.short),
+                                                AnswerEntry() => ChatAnswer(
+                                                  key: ValueKey(e.id),
+                                                  entry: e,
+                                                ),
+                                              },
+                                          ],
+                                          gap: compact ? 18 : 28,
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                        ),
                                 ),
-                                child: empty
-                                    ? const _Welcome()
-                                    : ColumnGap(
-                                        [
-                                          for (final e in state.entries)
-                                            switch (e) {
-                                              UserEntry() => UserBubble(e.text, short: e.short),
-                                              AnswerEntry() => ChatAnswer(
-                                                key: ValueKey(e.id),
-                                                entry: e,
-                                              ),
-                                            },
-                                        ],
-                                        gap: compact ? 18 : 28,
-                                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                                      ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
