@@ -49,8 +49,14 @@ def test_custom_window_needs_dates():
     assert client.get("/v1/coverage?window=custom").status_code == 422
 
 
-def test_healthz_and_cors():
-    assert client.get("/healthz").status_code == 200
+def test_healthz_follows_the_database(monkeypatch):
+    monkeypatch.setattr("app.main.db.ping", lambda: True)
+    assert client.get("/healthz").json() == {"status": "ok"}
+    monkeypatch.setattr("app.main.db.ping", lambda: False)
+    assert client.get("/healthz").status_code == 503
+
+
+def test_cors():
     r = client.options(
         "/v1/alerts",
         headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"},

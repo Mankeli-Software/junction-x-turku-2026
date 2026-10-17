@@ -10,7 +10,8 @@ SERVER="$(az postgres flexible-server list -g "$AEI_RESOURCE_GROUP" \
   --query "[?tags.project=='aei' && tags.env=='$AEI_ENV'].name | [0]" -o tsv)"
 [[ -n "$SERVER" ]] || { echo "No Postgres server found." >&2; exit 1; }
 
-RULE="dev-$(whoami | tr -c 'A-Za-z0-9' '-' | head -c 20)"
-az postgres flexible-server firewall-rule create -g "$AEI_RESOURCE_GROUP" -n "$SERVER" \
-  --rule-name "$RULE" --start-ip-address "$IP" --end-ip-address "$IP" -o none
+RULE="dev-$(printf '%s' "$(whoami)" | tr -c 'A-Za-z0-9' '-' | head -c 20)"
+# For firewall-rule commands, --name is the rule and --server-name is the server.
+az postgres flexible-server firewall-rule create -g "$AEI_RESOURCE_GROUP" --server-name "$SERVER" \
+  --name "$RULE" --start-ip-address "$IP" --end-ip-address "$IP" -o none
 echo "Allowed $IP on $SERVER as rule $RULE."

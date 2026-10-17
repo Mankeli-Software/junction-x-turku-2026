@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import db
 from app.config import settings
 from app.functions import alerts, dashboard, data  # noqa: F401  (registers functions)
 from app.registry import REGISTRY, build_router
@@ -20,9 +21,12 @@ app.include_router(build_router("/v1"))
 
 
 @app.get("/healthz")
-def healthz():
-    # The database check arrives with the Postgres issue.
-    return {"status": "ok"}
+def healthz(response: Response):
+    """200 only when the database answers SELECT 1; App Service uses this as its health check."""
+    if db.ping():
+        return {"status": "ok"}
+    response.status_code = 503
+    return {"status": "database unavailable"}
 
 
 @app.get("/v1/functions", tags=["meta"])
