@@ -1,4 +1,4 @@
-// AMiRight on Azure. Resource-group scope: rg-junctionturku already exists.
+// AMRight on Azure. Resource-group scope: rg-junctionturku already exists.
 targetScope = 'resourceGroup'
 
 @description('Environment name, used in resource names and tags.')

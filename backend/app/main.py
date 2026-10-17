@@ -6,7 +6,7 @@ from app.functions import alerts, dashboard, data  # noqa: F401  (registers func
 from app.registry import REGISTRY, build_router
 from app.widgets.catalog import catalog_schemas
 
-app = FastAPI(title="AMiRight API", version="0.1.0")
+app = FastAPI(title="AMRight API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,

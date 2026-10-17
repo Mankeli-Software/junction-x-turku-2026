@@ -65,7 +65,7 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
 }
 
 // Key Vault Secrets User
-var kvSecretsUserRole = '4633458b-17de-40ea-a5d5-b5d6d9ba7ee5'
+var kvSecretsUserRole = '4633458b-17de-408a-b874-0445c86b69e6'
 
 resource secretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(vault.id, site.id, kvSecretsUserRole)

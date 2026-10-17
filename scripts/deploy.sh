@@ -34,9 +34,10 @@ ARGS=(-g "$AEI_RESOURCE_GROUP" -n "$DEPLOYMENT" --template-file infra/main.bicep
 
 echo "== Subscription: $(az account show --query name -o tsv) | group: $AEI_RESOURCE_GROUP | env: $AEI_ENV"
 az bicep build --file infra/main.bicep --stdout >/dev/null
-az deployment group what-if "${ARGS[@]}" --no-pretty-print --result-format ResourceIdOnly 2>&1 | tail -40
+az deployment group what-if "${ARGS[@]}" --result-format ResourceIdOnly
 
 if [[ "$YES" != true ]]; then
+  [[ -t 0 ]] || { echo "No terminal to confirm on. Re-run with --yes to deploy." >&2; exit 1; }
   read -r -p "Deploy these changes? [y/N] " ok
   [[ "$ok" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
 fi

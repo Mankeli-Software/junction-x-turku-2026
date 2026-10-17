@@ -12,7 +12,7 @@ class AmirightApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'AMiRight',
+        title: 'AMRight',
         theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
         home: const Scaffold(body: SafeArea(child: CoverageRanking(query: {'ward': 'URO', 'infection_type': 'uti'}))),
       );

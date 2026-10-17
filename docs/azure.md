@@ -1,4 +1,4 @@
-# AMiRight on Azure: runbook
+# AMRight on Azure: runbook
 
 Implements the infrastructure part of issue #3. Everything is Bicep (`infra/`) plus helper scripts (`scripts/`).
 
