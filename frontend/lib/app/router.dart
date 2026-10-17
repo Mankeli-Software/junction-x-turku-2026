@@ -11,7 +11,7 @@ import '../features/doctor/doctor_home_page.dart';
 import '../features/login/login_page.dart';
 import '../features/chat/chat_page.dart';
 import '../features/components/components_page.dart';
-import '../features/hygiene/hygiene_page.dart';
+import '../features/hygiene/hygiene_visual_page.dart';
 import '../features/lab/lab_page.dart';
 import '../features/research/research_page.dart';
 import '../session/session_cubit.dart';
@@ -89,7 +89,7 @@ GoRouter buildRouter(SessionCubit session) {
         path: Routes.answer,
         pageBuilder: (_, s) => _page(s, DoctorAnswerPage(profile: _profileOf(s))),
       ),
-      GoRoute(path: Routes.hygiene, pageBuilder: (_, s) => _page(s, const HygienePage())),
+      GoRoute(path: Routes.hygiene, pageBuilder: (_, s) => _page(s, const HygieneVisualPage())),
       GoRoute(
         path: Routes.lab,
         pageBuilder: (_, s) => _page(s, const LabPage()),

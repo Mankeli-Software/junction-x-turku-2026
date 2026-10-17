@@ -24,7 +24,17 @@ from scipy.stats import poisson
 
 from app.datalayer import alerts as A
 from app.datalayer.store import DataStore, window_dates
-from app.models.alerts import SpreadingOut, SpreadingQuery, SpreadingRow, WardLink, WardLinksOut
+from app.models.alerts import (
+    SpreadingOut,
+    SpreadingQuery,
+    SpreadingRow,
+    SpreadingSeriesOut,
+    SpreadingSeriesQuery,
+    SpreadingSeriesRow,
+    WardLink,
+    WardLinksOut,
+    WardMix,
+)
 from app.models.common import WindowOut
 from app.vocab import WARDS
 
@@ -72,6 +82,54 @@ def spreading(store: DataStore, q: SpreadingQuery, window: WindowOut) -> Spreadi
             above = history >= MIN_HISTORY_DAYS and count > 0 and poisson.sf(count - 1, mean) < SPREAD_P
             rows.append(SpreadingRow(ward=ward, phenotype=name, count=count, normal=round(mean, 2), above_normal=bool(above)))
     return SpreadingOut(window=window, rows=rows)
+
+
+def spreading_series(store: DataStore, q: SpreadingSeriesQuery) -> SpreadingSeriesOut:
+    """Flagged first isolates per ward, flag and 7-day block ending on as_of (oldest first).
+
+    The last four blocks are the 28-day window of `spreading`; the typical weekly count is the
+    ward's own 365 days before that window. Also the cultures and the organisms of the flagged
+    isolates per ward in the last 4 weeks, for the ward detail.
+    """
+    weeks = q.weeks
+    start = q.as_of - timedelta(days=7 * weeks - 1)
+    firsts = store.first_isolates(q.as_of, "custom", start, q.as_of)
+    block = ((firsts["sample_date"].dt.date.map(lambda d: (d - start).days)) // 7).clip(0, weeks - 1)
+
+    win_start = q.as_of - timedelta(days=27)
+    base_end = win_start - timedelta(days=1)
+    first_day = store.tables.cultures["sample_date"].min().date()
+    history = min(BASELINE_DAYS, (base_end - first_day).days + 1)
+    base = (
+        _flag_counts(store, base_end, base_end - timedelta(days=history - 1), base_end)
+        if history >= MIN_HISTORY_DAYS
+        else None
+    )
+
+    rows = []
+    for ward in WARDS:
+        in_ward = firsts["ward_code"] == ward
+        for name, col in FLAGS.items():
+            per = block[in_ward & (firsts[col] > 0)].value_counts()
+            weekly = [int(per.get(i, 0)) for i in range(weeks)]
+            normal = float(base.at[ward, name]) * 7 / history if base is not None else 0.0
+            rows.append(SpreadingSeriesRow(ward=ward, phenotype=name, weekly=weekly, normal_weekly=round(normal, 2)))
+
+    c = store.tables.cultures
+    recent = c[(c["sample_date"] >= pd.Timestamp(win_start)) & (c["sample_date"] <= pd.Timestamp(q.as_of))]
+    cultures = recent.groupby("ward_code").size()
+    flagged = firsts[(firsts["sample_date"] >= pd.Timestamp(win_start)) & firsts[list(FLAGS.values())].gt(0).any(axis=1)]
+    mix = flagged.groupby(["ward_code", "organism"]).size()
+    wards = [
+        WardMix(
+            ward=w,
+            cultures=int(cultures.get(w, 0)),
+            organisms={o: int(n) for (ww, o), n in mix.items() if ww == w},
+        )
+        for w in WARDS
+    ]
+    week_starts = [start + timedelta(days=7 * i) for i in range(weeks)]
+    return SpreadingSeriesOut(as_of=q.as_of, week_starts=week_starts, rows=rows, wards=wards)
 
 
 # ---- ward links --------------------------------------------------------------------------------

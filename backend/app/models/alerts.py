@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.models.common import WindowOut, WindowQuery
-from app.vocab import Drug, Organism, Phenotype, Specimen, Ward
+from app.vocab import DEFAULT_AS_OF, Drug, Organism, Phenotype, Specimen, Ward
 
 AlertType = Literal["sentinel", "statistical", "trend", "missing_data"]
 Severity = Literal["low", "medium", "high", "critical"]
@@ -106,6 +106,31 @@ class SpreadingRow(BaseModel):
 class SpreadingOut(BaseModel):
     window: WindowOut
     rows: list[SpreadingRow]
+
+
+class SpreadingSeriesQuery(BaseModel):
+    as_of: date = DEFAULT_AS_OF
+    weeks: int = Field(12, ge=4, le=26, description="7-day blocks ending on as_of")
+
+
+class SpreadingSeriesRow(BaseModel):
+    ward: Ward
+    phenotype: Phenotype
+    weekly: list[int] = Field(description="flagged first isolates per 7-day block, oldest first")
+    normal_weekly: float = Field(description="typical count per week, from the 365 days before")
+
+
+class WardMix(BaseModel):
+    ward: Ward
+    cultures: int = Field(description="cultures taken in the last 4 weeks")
+    organisms: dict[str, int] = Field(description="flagged first isolates in the last 4 weeks by organism")
+
+
+class SpreadingSeriesOut(BaseModel):
+    as_of: date
+    week_starts: list[date]
+    rows: list[SpreadingSeriesRow]
+    wards: list[WardMix]
 
 
 class WardLinksQuery(WindowQuery):

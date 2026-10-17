@@ -98,3 +98,14 @@ def test_routes_contain_no_patient_ids():
         r = client.get(url)
         assert r.status_code == 200
         assert not re.search(r"P\d{6}", r.text) and "patient_id" not in r.text
+
+
+def test_series_last_four_weeks_match_spreading(store):
+    from app.models.alerts import SpreadingSeriesQuery
+
+    out = sp.spreading_series(store, SpreadingSeriesQuery(as_of=END))
+    now = {(r.ward, r.phenotype): r.count for r in _spread(store).rows}
+    assert len(out.week_starts) == 12 and len(out.rows) == 9 * 4
+    for r in out.rows:
+        assert len(r.weekly) == 12
+        assert sum(r.weekly[-4:]) == now[(r.ward, r.phenotype)]

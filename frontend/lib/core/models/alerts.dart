@@ -369,6 +369,102 @@ class Spreading extends Equatable {
   List<Object?> get props => [window, rows];
 }
 
+// Spreading series ----------------------------------------------------------
+
+class SpreadingSeriesQuery extends Equatable implements AsOfQuery<SpreadingSeriesQuery> {
+  const SpreadingSeriesQuery({this.asOf, this.weeks = 12});
+
+  final DateTime? asOf;
+  final int weeks;
+
+  @override
+  SpreadingSeriesQuery resolve(DateTime asOf) =>
+      SpreadingSeriesQuery(asOf: this.asOf ?? asOf, weeks: weeks);
+
+  @override
+  Json toQuery() => query({'as_of': asOf, 'weeks': weeks});
+
+  @override
+  List<Object?> get props => [asOf, weeks];
+}
+
+/// One ward and resistant type: flagged first isolates per week, oldest first.
+class SpreadingSeriesRow extends Equatable {
+  const SpreadingSeriesRow({
+    required this.ward,
+    required this.phenotype,
+    required this.weekly,
+    required this.normalWeekly,
+  });
+
+  factory SpreadingSeriesRow.fromJson(Json j) => SpreadingSeriesRow(
+    ward: byCode(Ward.values, j['ward']! as String),
+    phenotype: byCode(Phenotype.values, j['phenotype']! as String),
+    weekly: [for (final v in j['weekly'] as List) toInt(v)],
+    normalWeekly: toDouble(j['normal_weekly']),
+  );
+
+  final Ward ward;
+  final Phenotype phenotype;
+  final List<int> weekly;
+
+  /// Typical count per week on this ward.
+  final double normalWeekly;
+
+  @override
+  List<Object?> get props => [ward, phenotype, weekly, normalWeekly];
+}
+
+/// Cultures taken on a ward in the last 4 weeks and the organisms of its resistant finds.
+class WardMix extends Equatable {
+  const WardMix({required this.ward, required this.cultures, required this.organisms});
+
+  factory WardMix.fromJson(Json j) => WardMix(
+    ward: byCode(Ward.values, j['ward']! as String),
+    cultures: toInt(j['cultures']),
+    organisms: {
+      for (final e in (j['organisms'] as Json).entries)
+        byCode(Organism.values, e.key): toInt(e.value),
+    },
+  );
+
+  final Ward ward;
+  final int cultures;
+  final Map<Organism, int> organisms;
+
+  @override
+  List<Object?> get props => [ward, cultures, organisms];
+}
+
+class SpreadingSeries extends Equatable {
+  const SpreadingSeries({
+    required this.asOf,
+    required this.weekStarts,
+    required this.rows,
+    required this.wards,
+  });
+
+  factory SpreadingSeries.fromJson(Json j) => SpreadingSeries(
+    asOf: parseDate(j['as_of']),
+    weekStarts: [for (final d in j['week_starts'] as List) parseDate(d)],
+    rows: jsonList(j['rows']).map(SpreadingSeriesRow.fromJson).toList(),
+    wards: jsonList(j['wards']).map(WardMix.fromJson).toList(),
+  );
+
+  final DateTime asOf;
+  final List<DateTime> weekStarts;
+  final List<SpreadingSeriesRow> rows;
+  final List<WardMix> wards;
+
+  SpreadingSeriesRow? row(Ward w, Phenotype p) =>
+      rows.where((r) => r.ward == w && r.phenotype == p).firstOrNull;
+
+  WardMix? mix(Ward w) => wards.where((m) => m.ward == w).firstOrNull;
+
+  @override
+  List<Object?> get props => [asOf, weekStarts, rows, wards];
+}
+
 // Ward links ----------------------------------------------------------------
 
 class WardLinksQuery extends Equatable implements AsOfQuery<WardLinksQuery> {

@@ -59,6 +59,9 @@ class AmrRepository {
   Future<Spreading> spreading(SpreadingQuery q) =>
       _get('/v1/spreading', q.toQuery(), Spreading.fromJson);
 
+  Future<SpreadingSeries> spreadingSeries(SpreadingSeriesQuery q) =>
+      _get('/v1/spreading/series', q.toQuery(), SpreadingSeries.fromJson);
+
   Future<WardLinks> wardLinks(WardLinksQuery q) =>
       _get('/v1/ward-links', q.toQuery(), WardLinks.fromJson);
 

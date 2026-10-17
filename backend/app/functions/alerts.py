@@ -12,6 +12,8 @@ from app.models.alerts import (
     AlertsQuery,
     SpreadingOut,
     SpreadingQuery,
+    SpreadingSeriesOut,
+    SpreadingSeriesQuery,
     VolumeOut,
     VolumeQuery,
     WardLinksOut,
@@ -57,6 +59,17 @@ def get_volume(q: VolumeQuery) -> VolumeOut:
 )
 def get_spreading(q: SpreadingQuery) -> SpreadingOut:
     return real_spreading.spreading(get_store(), q, _win(q))
+
+
+@register(
+    "get_spreading_series",
+    "Weekly counts of MRSA, ESBL, VRE and CPE per ward for the last weeks, with the typical weekly count.",
+    "/spreading/series",
+    SpreadingSeriesQuery,
+    SpreadingSeriesOut,
+)
+def get_spreading_series(q: SpreadingSeriesQuery) -> SpreadingSeriesOut:
+    return real_spreading.spreading_series(get_store(), q)
 
 
 @register(

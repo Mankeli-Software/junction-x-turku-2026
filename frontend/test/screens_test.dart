@@ -60,6 +60,19 @@ void main() {
       await open(tester, 'jari', '/hygiene', size: size);
     });
 
+    testWidgets('infection control visual version renders ($tag)', (tester) async {
+      await open(tester, 'sanna', '/hygiene', size: size);
+      expect(find.text('What is spreading'), findsWidgets);
+      expect(find.text('All wards'), findsOneWidget);
+      expect(find.textContaining('Ward detail'), findsOneWidget);
+      expect(find.textContaining('Early warning'), findsOneWidget);
+      await tester.tap(find.text('Geriatrics').first);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+      expect(find.text('Geriatrics'), findsWidgets);
+    });
+
     testWidgets('component gallery builds every widget ($tag)', (tester) async {
       await open(tester, 'aino', '/components', size: size);
       expect(find.text('What the AI can place'), findsOneWidget);
@@ -97,7 +110,8 @@ void main() {
         of: find.byType(AskLauncher).first,
         matching: find.byType(TextField),
       );
-      await tester.ensureVisible(field);
+      // Centred, so a long page does not park the field under the pinned top bar.
+      await Scrollable.ensureVisible(tester.element(field), alignment: 0.5);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(field);
       for (var i = 0; i < 4; i++) {
