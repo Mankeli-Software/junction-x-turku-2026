@@ -65,4 +65,6 @@ scripts/teardown.sh demo      # deletes every resource tagged project=aei, env=d
 
 ## Known limits
 
+App Service plan: Basic B3 (4 vCPU, 7 GB, about $52 a month at list price in Norway East; B1 was $13, B2 $26). Billed by the hour, so scale it down with `sku` in `infra/modules/appservice.bicep` when the demo is over.
+
 No login (the API key only protects non-browser clients), public endpoints, one App Service instance, Postgres open to Azure services plus listed IPs, synthetic data only. Real data would need private networking and authentication.
