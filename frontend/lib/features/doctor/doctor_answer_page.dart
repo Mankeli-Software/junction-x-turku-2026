@@ -68,7 +68,7 @@ class DoctorAnswerPage extends StatelessWidget {
                   : _Answer(coverage: c, profile: profile, query: coverage),
             ),
           Text(
-            'Local susceptibility coverage from lab data, not a prescription. Synthetic data.',
+            'Local susceptibility coverage from lab data, not a prescription.',
             style: AmrText.body(13),
           ),
         ],

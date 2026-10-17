@@ -11,7 +11,7 @@ enum PatientField {
   age('Age group', 'aged', 'age'),
   ward('Ward', 'on', 'ward'),
   infection('What kind of infection?', 'with', 'infection'),
-  onset('Where did it start?', 'that started', 'home or hospital');
+  onset('Where did it start?', 'that started', 'where');
 
   const PatientField(this.question, this.lead, this.placeholder);
 

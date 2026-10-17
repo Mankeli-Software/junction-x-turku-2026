@@ -42,7 +42,7 @@ void main() {
     expect(find.text('Step 1 of 5'), findsOneWidget);
     // A new patient starts blank: each word shows its category, nothing is chosen.
     expect(find.text('sex'), findsOneWidget);
-    expect(find.text('home or hospital.'), findsOneWidget);
+    expect(find.text('where'), findsOneWidget);
     // No answer button until every word is set.
     expect(find.text('Show what works'), findsNothing);
 

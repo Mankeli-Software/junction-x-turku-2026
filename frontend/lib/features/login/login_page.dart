@@ -43,10 +43,9 @@ class _LoginPageState extends State<LoginPage> {
       trailing: const Text('→'),
       onPressed: _continue,
     );
-    final note = Text('Synthetic data only. Not for clinical decisions.', style: AmrText.body(14));
     return AppPage(
       glowHeight: 560,
-      topBarTrailing: context.isCompact ? const SizedBox.shrink() : const _PocPill(),
+      topBarTrailing: const SizedBox.shrink(),
       body: PageBody(
         top: fluid(context, 40, 7, 96),
         gap: AmrSpace.x40,
@@ -57,7 +56,7 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 Expanded(child: title),
                 const SizedBox(width: 24),
-                ColumnGap([button, note], gap: 10, crossAxisAlignment: CrossAxisAlignment.end),
+                button,
               ],
             )
           else
@@ -77,34 +76,11 @@ class _LoginPageState extends State<LoginPage> {
                 ),
             ],
           ),
-          if (!side)
-            Wrap(
-              spacing: 28,
-              runSpacing: 16,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [button, note],
-            ),
+          if (!side) Align(alignment: Alignment.centerLeft, child: button),
         ],
       ),
     );
   }
-}
-
-class _PocPill extends StatelessWidget {
-  const _PocPill();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(minHeight: 48),
-    padding: const EdgeInsets.symmetric(horizontal: 20),
-    alignment: Alignment.center,
-    decoration: const BoxDecoration(
-      color: AmrColors.white,
-      borderRadius: AmrRadius.pill,
-      boxShadow: AmrShadows.sm,
-    ),
-    child: Text('Proof of concept · synthetic data', style: AmrText.body(15)),
-  );
 }
 
 IconData _groupIcon(UserGroup g) => switch (g) {

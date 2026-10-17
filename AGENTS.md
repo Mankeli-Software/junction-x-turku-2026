@@ -41,6 +41,8 @@ Rules that every number must follow:
 
 ## Status
 
+The header profile is a static name/context and avatar display (avatar only on phones), with no user menu, hover action or keyboard focus. Desktop replay and Switch user remain separate controls.
+
 Real (computed from the data): data layer (#5), `GET /v1/susceptibility` and `/v1/susceptibility/series` with shrinkage (#6), Azure infrastructure and CI (#3), Postgres schema, CSV loader, DB-backed `/healthz` and `/v1/dashboard` (#11), `GET /v1/volume`, `/v1/alerts` and `/v1/alerts/detail` with sentinel (every CPE and VRE isolate) and missing-data alerts (#8). Statistical alerts (ESBL/MRSA flags and multi-drug rises above the hospital rate) and the hospital-wide trend alert (#9); `Alert.ward` is `None` for a trend. `GET /v1/spreading` and `/v1/ward-links` with cross-ward warnings (#10): a link is a patient sampled on both wards within 30 days (ED: PHC-N 413, GER 325, URO 291), a warning needs an active statistical or sentinel alert on the linked ward and a link of at least 5% of the smaller ward's patients. Rule scores: `docs/alert_evaluation.md`.
 
 Infection control (`/hygiene`) is the visual design from the design canvas page "Infection control · visual": hero ward, ward tiles with sparklines, ward detail with weekly bars, linked-wards flow and heads-up. It reads `GET /v1/spreading/series` (new, real), `/v1/spreading` and `/v1/ward-links`; "Export" copies the weekly counts as CSV, "Pin to my home" pins `SpreadingCounts`, the heads-up is local only.

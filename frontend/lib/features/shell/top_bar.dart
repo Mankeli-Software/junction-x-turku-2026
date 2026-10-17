@@ -7,7 +7,6 @@ import '../../app/router.dart';
 import '../../core/format.dart';
 import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
-import '../../session/demo_users.dart';
 import '../../session/session_cubit.dart';
 import 'replay_sheet.dart';
 
@@ -28,15 +27,15 @@ void goHome(BuildContext context) {
 String replayLabel(SessionState s) =>
     s.isLive ? 'Data to ${day(s.asOf)}' : 'Replay · ${day(s.asOf)}';
 
-/// Brand, tagline, replay date, user and switch user. On a phone: brand and avatar only; the
-/// avatar opens a sheet with the rest.
+/// Brand, tagline, replay date, static user profile and switch user.
+/// On a phone: brand and a static avatar only.
 class TopBar extends StatelessWidget {
   const TopBar({super.key, this.trailing, this.subtitle, this.breadcrumb});
 
   /// Replaces the tagline with a breadcrumb whose first part can be tapped.
   final Widget? breadcrumb;
 
-  /// Replaces the session controls (the login page shows a "Proof of concept" pill).
+  /// Replaces the session controls.
   final Widget? trailing;
 
   /// Replaces the role tagline next to the brand ("Home ✦ Ask").
@@ -69,10 +68,7 @@ class TopBar extends StatelessWidget {
     } else if (user == null) {
       controls = const SizedBox.shrink();
     } else if (compact) {
-      controls = Pressable(
-        onTap: () => _showUserSheet(context),
-        builder: (_, _) => AmrAvatar(user.initials, size: 44),
-      );
+      controls = AmrAvatar(user.initials, size: 44);
     } else {
       controls = Wrap(
         spacing: 10,
@@ -85,12 +81,29 @@ class TopBar extends StatelessWidget {
             leading: const Icon(LucideIcons.clock),
             onPressed: () => showReplaySheet(context),
           ),
-          AmrButton(
-            label: '${user.name} · ${user.context}',
-            variant: AmrButtonVariant.surface,
+          Container(
+            constraints: const BoxConstraints(minHeight: 48),
             padding: const EdgeInsets.only(left: 6, right: 20),
-            leading: AmrAvatar(user.initials),
-            onPressed: () => _showUserSheet(context),
+            decoration: const BoxDecoration(
+              color: AmrColors.white,
+              borderRadius: AmrRadius.pill,
+              boxShadow: AmrShadows.sm,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AmrAvatar(user.initials),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    '${user.name} · ${user.context}',
+                    style: AmrText.inter(15, weight: FontWeight.w400, color: AmrColors.ink),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
           AmrButton(
             label: 'Switch user',
@@ -118,111 +131,4 @@ class TopBar extends StatelessWidget {
       ),
     );
   }
-}
-
-void _showUserSheet(BuildContext context) {
-  final cubit = context.read<SessionCubit>();
-  showModalBottomSheet<void>(
-    context: context,
-    builder: (sheetContext) => BlocProvider.value(value: cubit, child: const _UserSheet()),
-  );
-}
-
-/// The avatar menu: who you are, the replay date and switch user.
-class _UserSheet extends StatelessWidget {
-  const _UserSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.watch<SessionCubit>().state;
-    final DemoUser? user = session.user;
-    if (user == null) return const SizedBox.shrink();
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                AmrAvatar(user.initials, size: 48),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(user.name, style: AmrText.body(17, weight: FontWeight.w600)),
-                      Text(user.title, style: AmrText.body(14)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _SheetRow(
-              label: 'Replay date',
-              value: day(session.asOf),
-              onTap: () {
-                Navigator.of(context).pop();
-                showReplaySheet(context);
-              },
-            ),
-            const SizedBox(height: 10),
-            _SheetRow(
-              label: 'Component catalog',
-              value: 'Every widget',
-              onTap: () {
-                Navigator.of(context).pop();
-                GoRouter.of(context).go('/components');
-              },
-            ),
-            const SizedBox(height: 20),
-            AmrButton(
-              label: 'Switch user',
-              size: AmrButtonSize.xl,
-              expand: true,
-              leading: const Icon(LucideIcons.logOut),
-              onPressed: () {
-                Navigator.of(context).pop();
-                context.read<SessionCubit>().signOut();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SheetRow extends StatelessWidget {
-  const _SheetRow({required this.label, required this.value, this.onTap});
-
-  final String label;
-  final String value;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Pressable(
-    onTap: onTap,
-    pressScale: 0.99,
-    builder: (_, s) => AnimatedContainer(
-      duration: AmrMotion.fast,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        color: s.hovered ? AmrColors.lavenderPale : AmrColors.lavenderSoft,
-        borderRadius: AmrRadius.card,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(label, style: AmrText.body(15, weight: FontWeight.w500)),
-          ),
-          Text(value, style: AmrText.body(15)),
-          const SizedBox(width: 6),
-          const Icon(LucideIcons.chevronRight, size: 18, color: AmrColors.ink),
-        ],
-      ),
-    ),
-  );
 }
