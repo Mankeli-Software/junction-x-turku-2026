@@ -1,5 +1,5 @@
 """Per-IP limits on the routes that cost money or write: the Claude calls under `/v1/agent/` and
-`PUT /v1/dashboard`.
+`PUT` and `DELETE /v1/dashboard`.
 
 A forged `Origin` header gets past the API key (see auth.py), so these keep one caller from
 spending the Anthropic budget or filling the dashboard table. The counts live in each worker's
@@ -47,7 +47,9 @@ class Limit:
 LIMITS = (
     Limit("POST", "/v1/agent/screen", 20, 600),  # a chat question: up to 8 Claude calls
     Limit("GET", "/v1/agent/in-short", 120, 600),  # one short call per page, none when remembered
+    Limit("POST", "/v1/agent/widget", 30, 600),  # one widget suggestion: up to 5 Claude calls
     Limit("PUT", "/v1/dashboard", 30, 600),
+    Limit("DELETE", "/v1/dashboard", 30, 600),  # back to the default layout
 )
 
 

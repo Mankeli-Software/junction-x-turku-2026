@@ -55,3 +55,13 @@ def test_the_client_is_the_rightmost_public_address():
     assert client_ip(_scope("8.8.8.8:51000, 10.0.0.4")) == "8.8.8.8"  # an internal hop is skipped
     assert client_ip(_scope("[2001:4860::1]:443")) == client_ip(_scope("2001:4860::ffff")) == "2001:4860::/64"
     assert client_ip(_scope("not an address")) == client_ip(_scope()) == "10.0.0.9"
+
+
+def test_every_claude_and_write_route_has_a_limit():
+    """A new agent route or write must get a limit too."""
+    covered = {(x.method, x.prefix) for x in ratelimit.LIMITS}
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        for method in getattr(route, "methods", None) or ():
+            if (path.startswith("/v1/agent/") or method in {"POST", "PUT", "DELETE"}) and path.startswith("/v1/"):
+                assert any(method == m and path.startswith(p) for m, p in covered), (method, path)

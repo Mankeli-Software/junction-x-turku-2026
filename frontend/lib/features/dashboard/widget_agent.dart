@@ -98,6 +98,12 @@ class RemoteWidgetAgent implements WidgetAgent {
         yield const WidgetAgentUnavailable();
         return;
       }
+      if (res.statusCode == 429) {
+        yield const WidgetAgentError(
+          'Too many suggestions from this network. Try again in a few minutes.',
+        );
+        return;
+      }
       if (res.statusCode != 200) {
         yield WidgetAgentError('The AI service answered ${res.statusCode}.');
         return;
