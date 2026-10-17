@@ -38,12 +38,6 @@ List<Alert> _open(Alerts data) =>
     data.alerts.where((a) => a.status != AlertStatus.resolved).toList()
       ..sort((x, y) => y.severity.index.compareTo(x.severity.index));
 
-String _needALook(int n) => switch (n) {
-  0 => 'No alerts need a look',
-  1 => '1 alert needs a look',
-  _ => '$n alerts need a look',
-};
-
 class _AlertsData extends StatelessWidget {
   const _AlertsData({required this.builder});
 
@@ -75,7 +69,6 @@ class _DesktopLab extends StatelessWidget {
                 final shown = open.where(s.filter.matches).toList();
                 final selected =
                     shown.where((a) => a.alertId == s.selected).firstOrNull ?? shown.firstOrNull;
-                final todo = open.where((a) => !s.reviewed.contains(a.alertId)).length;
                 final inbox = _Inbox(
                   alerts: shown,
                   selectedId: selected?.alertId,
@@ -89,7 +82,7 @@ class _DesktopLab extends StatelessWidget {
                   [
                     ColumnGap([
                       Breadcrumb(['Home', 'Alerts'], onTapFirst: () => goHome(context)),
-                      Text(_needALook(todo), style: AmrText.display(context, max: 80)),
+                      Text('Alerts to review', style: AmrText.display(context, max: 80)),
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
@@ -238,7 +231,7 @@ class _PhoneInbox extends StatelessWidget {
                   [
                     Text('Home $sparkle Alerts', style: AmrText.body(13)),
                     Text(
-                      _needALook(open.where((a) => !s.reviewed.contains(a.alertId)).length),
+                      'Alerts to review',
                       style: AmrText.sora(40, em: -0.035, height: 1.02),
                     ),
                     SingleChildScrollView(
