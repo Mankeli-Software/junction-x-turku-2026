@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 740" width="900" height="740" font-family="Inter, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#b5b5a8"/></marker></defs>
+<rect width="900" height="740" fill="#ffffff"/>
+<text x="30" y="42" font-size="19" font-weight="600" fill="#1a1a1a">One analytics core feeds every screen and the chat agent through one API</text>
+<text x="30" y="106.0" font-size="13" fill="#5c5c52">Sources</text>
+<rect x="150" y="70" width="355" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="327.5" y="97.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Synthetic microbiology data</text>
+<text x="327.5" y="115.0" text-anchor="middle" font-size="12" fill="#5c5c52">Six CSV tables, loaded with load_data.py</text>
+<rect x="525" y="70" width="355" height="62" rx="9" fill="#fff" stroke="#b5b5a8" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="702.5" y="97.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Hospital LIS (planned)</text>
+<text x="702.5" y="115.0" text-anchor="middle" font-size="12" fill="#5c5c52">Mylab results: FHIR, HL7 or files</text>
+<line x1="327" y1="132" x2="327" y2="166" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="702" y1="132" x2="702" y2="166" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="30" y="212.0" font-size="13" fill="#5c5c52">Store</text>
+<rect x="150" y="168" width="730" height="78" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="515.0" y="203.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">PostgreSQL on Azure, read into memory at start</text>
+<text x="515.0" y="221.0" text-anchor="middle" font-size="12" fill="#5c5c52">First-isolate rule, as_of cut (no future data), indexed filters, S/I/R everywhere</text>
+<text x="515.0" y="236.0" text-anchor="middle" font-size="12" fill="#5c5c52">Also holds the pinned dashboards</text>
+<line x1="235" y1="246" x2="235" y2="282" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="420" y1="246" x2="420" y2="282" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="605" y1="246" x2="605" y2="282" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="790" y1="246" x2="790" y2="282" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="30" y="320.0" font-size="13" fill="#5c5c52">Analytics</text>
+<rect x="150.0" y="284" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="236.0" y="311.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Susceptibility</text>
+<text x="236.0" y="329.0" text-anchor="middle" font-size="12" fill="#5c5c52">Shrunk to the hospital rate</text>
+<rect x="336.0" y="284" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="422.0" y="311.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Coverage</text>
+<text x="422.0" y="329.0" text-anchor="middle" font-size="12" fill="#5c5c52">Organisms, WISCA ranges</text>
+<rect x="522.0" y="284" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="608.0" y="311.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Alerts</text>
+<text x="608.0" y="329.0" text-anchor="middle" font-size="12" fill="#5c5c52">Sentinel, statistical, trend</text>
+<rect x="708.0" y="284" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="794.0" y="311.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Spreading</text>
+<text x="794.0" y="329.0" text-anchor="middle" font-size="12" fill="#5c5c52">Ward links and volume</text>
+<line x1="236.0" y1="346" x2="236.0" y2="382" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="422.0" y1="346" x2="422.0" y2="382" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="608.0" y1="346" x2="608.0" y2="382" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="794.0" y1="346" x2="794.0" y2="382" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="30" y="430.0" font-size="13" fill="#5c5c52">Serve</text>
+<rect x="150" y="384" width="730" height="82" rx="9" fill="#e8f0fb" stroke="#2f6fc4" stroke-width="2"/>
+<text x="515.0" y="421.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Function registry: each function declared once</text>
+<text x="515.0" y="439.0" text-anchor="middle" font-size="12" fill="#5c5c52">REST API (FastAPI, OpenAPI) now, MCP server planned, tools for the chat agent</text>
+<text x="515.0" y="454.0" text-anchor="middle" font-size="12" fill="#5c5c52">Results remembered per query and warmed before the first request</text>
+<line x1="327" y1="466" x2="327" y2="504" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="702" y1="466" x2="702" y2="504" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="30" y="542.0" font-size="13" fill="#5c5c52">AI</text>
+<rect x="150" y="506" width="355" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="327.5" y="533.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Claude agent (server-sent events)</text>
+<text x="327.5" y="551.0" text-anchor="middle" font-size="12" fill="#5c5c52">Reads the same functions, never writes a number</text>
+<rect x="525" y="506" width="355" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="702.5" y="533.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Widget catalog</text>
+<text x="702.5" y="551.0" text-anchor="middle" font-size="12" fill="#5c5c52">17 widgets, names and parameters validated</text>
+<line x1="505" y1="537.0" x2="523" y2="537.0" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+
+<text x="30" y="662.0" font-size="13" fill="#5c5c52">Clients</text>
+<rect x="150.0" y="626" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="236.0" y="653.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Doctor</text>
+<text x="236.0" y="671.0" text-anchor="middle" font-size="12" fill="#5c5c52">Patient form, ranked drugs</text>
+<rect x="336.0" y="626" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="422.0" y="653.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Lab</text>
+<text x="422.0" y="671.0" text-anchor="middle" font-size="12" fill="#5c5c52">Alert inbox, investigation</text>
+<rect x="522.0" y="626" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="608.0" y="653.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Infection control</text>
+<text x="608.0" y="671.0" text-anchor="middle" font-size="12" fill="#5c5c52">Ward tiles, linked wards</text>
+<rect x="708.0" y="626" width="172.0" height="62" rx="9" fill="#fff" stroke="#c9c9bd" stroke-width="1.5"/>
+<text x="794.0" y="653.0" text-anchor="middle" font-size="14" font-weight="600" fill="#1a1a1a">Research</text>
+<text x="794.0" y="671.0" text-anchor="middle" font-size="12" fill="#5c5c52">Explore, chart, CSV</text>
+<text x="150" y="712" font-size="12" fill="#5c5c52">Chat and pinned dashboard use the same widgets. Hospital systems (EPR, LIS, Teams) will call the API.</text>
+<text x="150" y="730" font-size="12" fill="#5c5c52">Hosted on Azure: App Service (API), Static Web Apps (Flutter web), Key Vault (Anthropic key), GitHub Actions deploys.</text>
+
+<line x1="236" y1="568" x2="236" y2="624" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="422" y1="568" x2="422" y2="624" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="608" y1="568" x2="608" y2="624" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="794" y1="568" x2="794" y2="624" stroke="#b5b5a8" stroke-width="1.5" marker-end="url(#ar)"/>
+</svg>
