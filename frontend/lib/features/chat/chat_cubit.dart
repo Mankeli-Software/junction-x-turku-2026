@@ -31,7 +31,8 @@ class ChatState extends Equatable {
   /// The other conversations, newest first.
   final List<Conversation> history;
 
-  /// The agent answered 503 or failed: show the quick-form fallback, keep the numbers working.
+  /// The AI is switched off (no API key, or the key was rejected): show the quick-form fallback,
+  /// keep the numbers working. A failed or slow answer never sets it; that answer shows an error.
   final bool aiUnavailable;
 
   bool get busy => entries.whereType<AnswerEntry>().any((a) => a.streaming);
@@ -90,7 +91,11 @@ class ChatCubit extends Cubit<ChatState> {
   final SessionCubit _session;
   late ChatAgent _agent = _newAgent();
   StreamSubscription<AgentEvent>? _sub;
+  Completer<void>? _done;
   int _nextId = 0;
+
+  /// Sends the question the AI being off swallowed again, for [retry].
+  Future<void> Function()? _again;
 
   static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
@@ -172,6 +177,7 @@ class ChatCubit extends Cubit<ChatState> {
   Future<void> send(String text, {bool short = false, PatientProfile? patient}) async {
     final user = _session.state.user;
     if (user == null || text.trim().isEmpty || state.busy) return;
+    _again = () => send(text, short: short, patient: patient);
     final context = ChatContext(
       user: user,
       asOf: _session.state.asOf,
@@ -192,19 +198,53 @@ class ChatCubit extends Cubit<ChatState> {
     );
     _save();
     unawaited(_sub?.cancel()); // the previous answer is finished or being replaced
-    final done = Completer<void>();
+    _finish();
+    final done = _done = Completer<void>();
     _sub = _agent
         .answer(text.trim(), context)
         .listen(
           (e) => _apply(answerId, e),
-          onError: (Object _) => _apply(answerId, const AgentUnavailable()),
+          // A broken stream fails this answer only; the composer comes back for the next one.
+          onError: (Object _) => _update(
+            answerId,
+            (a) => a.copyWith(
+              error: a.error ?? 'The answer stopped part-way. Try again.',
+              streaming: false,
+              clearStatus: true,
+            ),
+          ),
           onDone: () {
             _update(answerId, (a) => a.copyWith(streaming: false, clearStatus: true));
             _save();
-            done.complete();
+            _finish();
           },
         );
     return done.future;
+  }
+
+  /// Completes the open [send] (it ends with the stream, or when the answer is stopped).
+  void _finish() {
+    final done = _done;
+    _done = null;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+
+  /// "Try again" on the AI-unavailable panel: the composer comes back and the question that
+  /// found the AI off is asked again.
+  Future<void> retry() {
+    final again = _again;
+    final entries = state.entries;
+    emit(
+      state.copyWith(
+        // The unanswered question is asked again below, so it is not shown twice.
+        entries: again != null && entries.lastOrNull is UserEntry
+            ? entries.sublist(0, entries.length - 1)
+            : null,
+        aiUnavailable: false,
+      ),
+    );
+    _again = null;
+    return again?.call() ?? Future.value();
   }
 
   /// The conversation so far for the agent, oldest first: the last [maxHistory] turns, each
@@ -229,6 +269,7 @@ class ChatCubit extends Cubit<ChatState> {
   /// A tapped answer to a clarifying question (component [componentId]): mark it chosen on the
   /// surface, then send it.
   Future<void> choose(int answerId, String componentId, String option) {
+    if (state.busy) return Future.value(); // nothing is sent, so nothing is marked chosen
     _rewrite(answerId, (c) => c['id'] == componentId ? {...c, 'chosen': option} : null);
     return send(option, short: true);
   }
@@ -268,8 +309,13 @@ class ChatCubit extends Cubit<ChatState> {
 
   void stop() {
     _sub?.cancel();
+    _again = null; // a question from this conversation is not retried in another
     final a = state.lastAnswer;
-    if (a != null) _update(a.id, (x) => x.copyWith(streaming: false, clearStatus: true));
+    if (a != null && a.streaming) {
+      _update(a.id, (x) => x.copyWith(streaming: false, clearStatus: true));
+      _save();
+    }
+    _finish();
   }
 
   void _apply(int id, AgentEvent e) {
@@ -295,6 +341,7 @@ class ChatCubit extends Cubit<ChatState> {
           ),
         );
         _sub?.cancel();
+        _finish();
     }
   }
 
@@ -413,6 +460,7 @@ class ChatCubit extends Cubit<ChatState> {
   @override
   Future<void> close() {
     _sub?.cancel();
+    _finish();
     final done = super.close();
     surfaces.dispose();
     return done;

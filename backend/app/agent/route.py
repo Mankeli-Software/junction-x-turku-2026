@@ -27,6 +27,11 @@ router = APIRouter()
 # that long. A comment line is invisible to the client's event parser.
 HEARTBEAT_SECONDS = 15.0
 
+# The whole answer gets this long (each model call may take 60 s and be retried, over 8 rounds);
+# past it the run is stopped and the app gets the usual timeout error, so a stalled answer never
+# holds the chat. The app stops waiting a little later on its own.
+DEADLINE_SECONDS = 150.0
+
 
 async def event_stream(req: AgentRequest, llm: LLMClient) -> AsyncIterator[str]:
     queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -39,10 +44,17 @@ async def event_stream(req: AgentRequest, llm: LLMClient) -> AsyncIterator[str]:
             await queue.put(None)
 
     task = asyncio.create_task(produce())
+    deadline = asyncio.get_running_loop().time() + DEADLINE_SECONDS
     try:
         while True:
+            left = deadline - asyncio.get_running_loop().time()
+            if left <= 0:
+                log.warning("agent: stopped at the %.0f s deadline", DEADLINE_SECONDS)
+                yield sse("error", {"code": "timeout", "message": "The AI took too long to answer."})
+                yield sse("done", {"ok": False})
+                break
             try:
-                item = await asyncio.wait_for(queue.get(), HEARTBEAT_SECONDS)
+                item = await asyncio.wait_for(queue.get(), min(HEARTBEAT_SECONDS, left))
             except TimeoutError:
                 yield PING
                 continue

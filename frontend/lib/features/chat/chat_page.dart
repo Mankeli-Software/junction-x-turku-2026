@@ -305,6 +305,7 @@ class _ChatPageState extends State<ChatPage> {
                               child: state.aiUnavailable
                                   ? AiUnavailablePanel(
                                       onQuickForm: context.read<CatalogActions>().newPatient,
+                                      onRetry: cubit.retry,
                                     )
                                   : Composer(
                                       key: ValueKey(state.currentId),

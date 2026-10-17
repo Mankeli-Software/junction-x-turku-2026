@@ -82,8 +82,25 @@ class _ChatAnswerState extends State<ChatAnswer> {
               }),
             ),
           if (e.error case final error?) NoteCard(title: error),
+          // Stop stays in reach while the rest streams in, so a stalled answer never holds the
+          // composer.
           if (e.streaming && hasParts)
-            Text(e.status ?? 'Building…', style: AmrText.body(13, weight: FontWeight.w500)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    e.status ?? 'Building…',
+                    style: AmrText.body(13, weight: FontWeight.w500),
+                  ),
+                ),
+                AmrButton(
+                  label: 'Stop',
+                  size: AmrButtonSize.sm,
+                  fontSize: 13,
+                  onPressed: cubit.stop,
+                ),
+              ],
+            ),
           if (!e.streaming && e.actions.isNotEmpty)
             AnswerAppear(
               child: _pinned != null

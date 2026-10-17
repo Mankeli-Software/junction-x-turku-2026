@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:amiright/catalog/default_catalog.dart';
 import 'package:amiright/features/chat/agent/answer_surface.dart';
 import 'package:amiright/features/chat/agent/chat_agent.dart';
@@ -133,6 +135,93 @@ void main() {
     expect(definition.components[clarify['id']]!.properties['chosen'], 'At home');
     expect(chat.state.entries.whereType<UserEntry>().last.short, isTrue);
   });
+
+  test('a broken stream fails that answer only: the next question can still be asked', () async {
+    final chat = ChatCubit(_BrokenAgent.new, session, catalog: buildGenUiCatalog(buildCatalog()));
+    await chat.send('first');
+    expect(chat.state.busy, isFalse);
+    expect(chat.state.aiUnavailable, isFalse);
+    expect(chat.state.lastAnswer!.error, isNotNull);
+    await chat.send('second');
+    expect(questions(chat.state), ['first', 'second']);
+  });
+
+  test('Stop frees the composer and finishes the pending send', () async {
+    final hanging = StreamController<AgentEvent>();
+    final chat = ChatCubit(
+      () => _StreamAgent(hanging.stream),
+      session,
+      catalog: buildGenUiCatalog(buildCatalog()),
+    );
+    final sent = chat.send('slow question');
+    expect(chat.state.busy, isTrue);
+    chat.stop();
+    expect(chat.state.busy, isFalse);
+    await sent.timeout(const Duration(seconds: 1));
+    await hanging.close();
+  });
+
+  test('the AI switched off can be retried, and the swallowed question goes again', () async {
+    final agent = _OffOnceAgent();
+    final chat = ChatCubit(() => agent, session, catalog: buildGenUiCatalog(buildCatalog()));
+    await chat.send('is trimethoprim OK?');
+    expect(chat.state.aiUnavailable, isTrue);
+    expect(questions(chat.state), ['is trimethoprim OK?']); // the question stays, unanswered
+    await chat.retry();
+    expect(chat.state.aiUnavailable, isFalse);
+    expect(questions(chat.state), ['is trimethoprim OK?']);
+    expect(chat.state.busy, isFalse);
+  });
+
+  test('a clarify option tapped while an answer is still coming is not marked chosen', () async {
+    final hanging = StreamController<AgentEvent>();
+    var first = true;
+    final chat = ChatCubit(
+      () => first ? _ClarifyAgent() : _StreamAgent(hanging.stream),
+      session,
+      catalog: buildGenUiCatalog(buildCatalog()),
+    );
+    await chat.send('my patient has an infection');
+    final answer = chat.state.lastAnswer!;
+    final clarify = answer.parts.single;
+    first = false;
+    chat.newChat(); // a fresh agent that never finishes
+    chat.open(chat.state.history.first.id);
+    unawaited(chat.send('something slow'));
+    await chat.choose(answer.id, clarify['id']! as String, 'At home');
+    expect(chat.state.entries.whereType<AnswerEntry>().first.parts.single['chosen'], isNull);
+    chat.stop();
+    await hanging.close();
+  });
+}
+
+/// Starts an answer, then the connection breaks.
+class _BrokenAgent implements ChatAgent {
+  @override
+  Stream<AgentEvent> answer(String question, ChatContext context) async* {
+    yield const AgentHeader();
+    throw StateError('connection reset');
+  }
+}
+
+/// Answers with whatever [events] brings.
+class _StreamAgent implements ChatAgent {
+  _StreamAgent(this.events);
+
+  final Stream<AgentEvent> events;
+
+  @override
+  Stream<AgentEvent> answer(String question, ChatContext context) => events;
+}
+
+/// Off for the first question, answering after that.
+class _OffOnceAgent implements ChatAgent {
+  var _calls = 0;
+
+  @override
+  Stream<AgentEvent> answer(String question, ChatContext context) => _calls++ == 0
+      ? Stream.value(const AgentUnavailable())
+      : _EchoAgent().answer(question, context);
 }
 
 /// Asks where the infection started.

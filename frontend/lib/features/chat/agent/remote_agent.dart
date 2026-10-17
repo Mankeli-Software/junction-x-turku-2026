@@ -16,10 +16,24 @@ import 'chat_agent.dart';
 /// `status` and `error` become the chat's own events. Follow-up actions and suggested questions
 /// are not sent by the AI: they are built here from the widgets it placed ([followUps]).
 class RemoteAgent implements ChatAgent {
-  RemoteAgent(this.baseUrl, {http.Client? client}) : _client = client ?? http.Client();
+  RemoteAgent(
+    this.baseUrl, {
+    http.Client? client,
+    this.idleTimeout = const Duration(seconds: 45),
+    this.totalTimeout = const Duration(minutes: 3),
+  }) : _client = client ?? http.Client();
 
   final String baseUrl;
   final http.Client _client;
+
+  /// How long to wait for the response to start; a restarting backend can hold a request.
+  static const connectTimeout = Duration(seconds: 30);
+
+  /// The backend sends a `: ping` every 15 s, so this long without a byte is a dead connection.
+  final Duration idleTimeout;
+
+  /// The backend stops an answer after 150 s; past this the app stops waiting anyway.
+  final Duration totalTimeout;
 
   @override
   Stream<AgentEvent> answer(String question, ChatContext ctx) async* {
@@ -37,12 +51,13 @@ class RemoteAgent implements ChatAgent {
     try {
       final http.StreamedResponse res;
       try {
-        res = await _client.send(request);
+        res = await _client.send(request).timeout(connectTimeout);
       } on Object {
-        yield const AgentUnavailable('Could not reach the AI service.');
+        // A network blip or a restart, not the AI switched off: this answer fails, the chat stays.
+        yield const AgentError('Could not reach the AI service. Try again in a moment.');
         return;
       }
-      if (res.statusCode == 503) {
+      if (res.statusCode == 503 && await _noKey(res)) {
         yield const AgentUnavailable();
         return;
       }
@@ -51,41 +66,72 @@ class RemoteAgent implements ChatAgent {
         return;
       }
       if (res.statusCode != 200) {
-        yield AgentError('The AI service answered ${res.statusCode}.');
+        yield AgentError(
+          res.statusCode >= 500
+              ? 'The AI service is not answering right now. Try again in a moment.'
+              : 'The AI service answered ${res.statusCode}.',
+        );
         return;
       }
-      await for (final (event, data) in parseSse(res.stream)) {
-        switch (event) {
-          case 'header':
-            final p = data['profile'];
-            if (p is Json) profile = PatientProfile.fromJson(p);
-            yield AgentHeader(
-              builtFrom: (data['built_from'] as List? ?? const []).cast<String>(),
-              note: data['note'] as String?,
-              profile: p is Json ? profile : null,
-            );
-          case 'status':
-            yield AgentStatus(data['text'] as String? ?? '');
-          case 'a2ui':
-            for (final c in jsonList((data['updateComponents'] as Json?)?['components'])) {
-              components[c['id']! as String] = c;
-            }
-            yield AgentSurface(data);
-          case 'error':
-            if (data['code'] == 'unavailable') {
-              yield AgentUnavailable(data['message'] as String? ?? 'AI answers are paused.');
+      try {
+        await for (final (event, data) in parseSse(_guard(res.stream))) {
+          switch (event) {
+            case 'header':
+              final p = data['profile'];
+              if (p is Json) profile = PatientProfile.fromJson(p);
+              yield AgentHeader(
+                builtFrom: (data['built_from'] as List? ?? const []).cast<String>(),
+                note: data['note'] as String?,
+                profile: p is Json ? profile : null,
+              );
+            case 'status':
+              yield AgentStatus(data['text'] as String? ?? '');
+            case 'a2ui':
+              for (final c in jsonList((data['updateComponents'] as Json?)?['components'])) {
+                components[c['id']! as String] = c;
+              }
+              yield AgentSurface(data);
+            case 'error':
+              if (data['code'] == 'unavailable') {
+                yield AgentUnavailable(data['message'] as String? ?? 'AI answers are paused.');
+                return;
+              }
+              yield AgentError(data['message'] as String? ?? 'Something went wrong.');
+            case 'done':
+              yield followUps(_widgets(components), profile);
               return;
-            }
-            yield AgentError(data['message'] as String? ?? 'Something went wrong.');
-          case 'done':
-            yield followUps(_widgets(components), profile);
-            return;
+          }
         }
+      } on TimeoutException {
+        yield const AgentError('The AI took too long to answer. Try again.');
+      } on Object {
+        yield const AgentError('The answer stopped part-way. Try again.');
       }
       yield followUps(_widgets(components), profile); // the stream ended without "done"
     } finally {
       if (!abort.isCompleted) abort.complete(); // stopped or left the chat: stop the request
     }
+  }
+
+  /// Whether a 503 is the backend's own "no API key" (FastAPI's JSON `detail`), not the
+  /// hosting front end answering for an app that is restarting.
+  static Future<bool> _noKey(http.StreamedResponse res) async {
+    try {
+      final body = jsonDecode(await res.stream.bytesToString().timeout(connectTimeout));
+      return body is Json && body['detail'] is String;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// [bytes] that fail with a [TimeoutException] when nothing, not even a ping, arrives for
+  /// [idleTimeout], or when the answer runs past [totalTimeout].
+  Stream<List<int>> _guard(Stream<List<int>> bytes) {
+    final started = Stopwatch()..start();
+    return bytes.timeout(idleTimeout).map((chunk) {
+      if (started.elapsed > totalTimeout) throw TimeoutException('answer', totalTimeout);
+      return chunk;
+    });
   }
 
   /// The body of `POST /v1/agent/screen` (backend/app/agent/schema.py, AgentRequest).

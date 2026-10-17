@@ -334,6 +334,19 @@ def test_a_ping_comment_is_sent_while_the_model_is_quiet(monkeypatch):
     assert chunks.index(route.PING) > 0
 
 
+def test_a_stalled_answer_ends_at_the_deadline_with_a_timeout_error(monkeypatch):
+    """A stream that never ends keeps the app's composer disabled; the deadline closes it."""
+    monkeypatch.setattr(route, "HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(route, "DEADLINE_SECONDS", 0.2)
+    stalled = FakeClient(lambda _: [FakeTurn([use("render_widget", widget="OrganismMix", params={"ward": "URO"})], delay=5)])
+
+    async def go():
+        return [chunk async for chunk in route.event_stream(req(), stalled)]
+
+    chunks = asyncio.run(asyncio.wait_for(go(), 2))
+    assert '"code":"timeout"' in chunks[-2] and chunks[-1].startswith("event: done")
+
+
 def test_a_key_stored_with_a_trailing_newline_still_works():
     """Key Vault returned the key with a newline once; the SDK called that a connection error."""
     from app.config import Settings

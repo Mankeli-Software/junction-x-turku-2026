@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:amiright/core/models/common.dart';
@@ -143,5 +144,65 @@ void main() {
     final events = await agent.answer('hi', _ctx()).toList();
     expect((events.first as AgentError).message, 'The AI took too long to answer.');
     expect(events.last, isA<AgentActions>());
+  });
+
+  test('a 503 from a restarting host is an error on the answer, not the AI switched off', () async {
+    final agent = RemoteAgent(
+      'http://api',
+      client: MockClient((_) async => http.Response('<html>Service Unavailable</html>', 503)),
+    );
+    final events = await agent.answer('hi', _ctx()).toList();
+    expect(events.single, isA<AgentError>());
+  });
+
+  test('an unreachable service is an error on the answer', () async {
+    final agent = RemoteAgent(
+      'http://api',
+      client: MockClient((_) async => throw http.ClientException('connection refused')),
+    );
+    final events = await agent.answer('hi', _ctx()).toList();
+    expect((events.single as AgentError).message, startsWith('Could not reach'));
+  });
+
+  test('a stream cut part-way keeps what arrived and says it stopped', () async {
+    final head = utf8.encode('event: status\ndata: {"text":"Checking…"}\n\n');
+    final agent = RemoteAgent(
+      'http://api',
+      client: MockClient.streaming(
+        (_, _) async => http.StreamedResponse(() async* {
+          yield head;
+          throw http.ClientException('reset');
+        }(), 200),
+      ),
+    );
+    final events = await agent.answer('hi', _ctx()).toList();
+    expect(events.map((e) => e.runtimeType), [AgentStatus, AgentError, AgentActions]);
+  });
+
+  test('a connection that goes silent, pings and all, times out', () async {
+    final silent = StreamController<List<int>>();
+    final agent = RemoteAgent(
+      'http://api',
+      client: MockClient.streaming((_, _) async => http.StreamedResponse(silent.stream, 200)),
+      idleTimeout: const Duration(milliseconds: 50),
+    );
+    final events = await agent.answer('hi', _ctx()).toList().timeout(const Duration(seconds: 2));
+    expect((events.first as AgentError).message, contains('too long'));
+    expect(events.last, isA<AgentActions>());
+    await silent.close();
+  });
+
+  test('an answer past the total time stops even while pings keep coming', () async {
+    final pings = Stream.periodic(
+      const Duration(milliseconds: 10),
+      (_) => utf8.encode(': ping\n\n'),
+    );
+    final agent = RemoteAgent(
+      'http://api',
+      client: MockClient.streaming((_, _) async => http.StreamedResponse(pings, 200)),
+      totalTimeout: const Duration(milliseconds: 80),
+    );
+    final events = await agent.answer('hi', _ctx()).toList().timeout(const Duration(seconds: 2));
+    expect((events.first as AgentError).message, contains('too long'));
   });
 }
