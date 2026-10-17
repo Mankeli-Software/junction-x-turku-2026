@@ -1,3 +1,8 @@
+from fastapi import HTTPException
+
+from app.datalayer import alerts as real_alerts
+from app.datalayer import volume as real_volume
+from app.datalayer.store import get_store
 from app.fixtures import alerts as fx
 from app.fixtures.data import window_out
 from app.models.alerts import (
@@ -21,15 +26,7 @@ def _win(q):
 
 @register("get_alerts", "Active and past alerts, filterable by ward, severity and status.", "/alerts", AlertsQuery, AlertsOut)
 def get_alerts(q: AlertsQuery) -> AlertsOut:
-    out = fx.alerts(q.as_of)
-    out.alerts = [
-        a
-        for a in out.alerts
-        if (not q.ward or a.ward == q.ward)
-        and (not q.severity or a.severity == q.severity)
-        and (not q.status or a.status == q.status)
-    ]
-    return out
+    return real_alerts.list_alerts(get_store(), q)
 
 
 @register(
@@ -40,12 +37,15 @@ def get_alerts(q: AlertsQuery) -> AlertsOut:
     AlertDetailOut,
 )
 def get_alert_detail(q: AlertDetailQuery) -> AlertDetailOut:
-    return fx.alert_detail(q.as_of)
+    try:
+        return real_alerts.alert_detail(get_store(), q.alert_id, q.as_of)
+    except real_alerts.UnknownAlert as e:
+        raise HTTPException(status_code=404, detail=f"No alert {q.alert_id} on {q.as_of}") from e
 
 
 @register("get_volume", "Culture counts by ward and specimen, for sampling-volume checks.", "/volume", VolumeQuery, VolumeOut)
 def get_volume(q: VolumeQuery) -> VolumeOut:
-    return fx.volume(_win(q), q.ward, q.specimen)
+    return real_volume.volume(get_store(), q, _win(q))
 
 
 @register(

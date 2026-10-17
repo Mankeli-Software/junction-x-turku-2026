@@ -11,7 +11,7 @@ SAMPLES = {
     "get_susceptibility": "?organism=Escherichia%20coli&drug=CRO",
     "get_susceptibility_series": "?organism=Escherichia%20coli&drug=CRO&wards=URO&wards=ICU",
     "get_alerts": "",
-    "get_alert_detail": "?alert_id=A-ICU-MRSA-1",
+    "get_alert_detail": "?alert_id=sentinel-C0046602-1",
     "get_volume": "?ward=URO",
     "get_spreading": "?wards=ICU",
     "get_ward_links": "?ward=URO",
