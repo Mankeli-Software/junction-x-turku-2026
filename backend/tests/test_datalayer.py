@@ -1,0 +1,178 @@
+import shutil
+from datetime import date
+from pathlib import Path
+
+import pandas as pd
+import pytest
+from app.config import settings
+from app.datalayer import derive
+from app.datalayer.store import (
+    EXPECTED_COUNTS,
+    DataStore,
+    Tables,
+    first_isolates,
+    load_tables,
+    window_dates,
+)
+
+
+def ts(*days):
+    return pd.Series(pd.to_datetime(list(days)))
+
+
+# --- derived columns ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "age,band",
+    [(0, "0-17"), (17, "0-17"), (18, "18-44"), (44, "18-44"), (45, "45-64"), (64, "45-64"),
+     (65, "65-74"), (74, "65-74"), (75, "75+"), (99, "75+")],
+)
+def test_age_band_edges(age, band):
+    assert derive.age_band(pd.Series([age])).iloc[0] == band
+
+
+def test_onset_rule():
+    ward_type = pd.Series(["in", "in", "in", "out", "out"])
+    sample = ts("2025-01-03", "2025-01-02", "2025-01-10", "2025-01-03", "2025-01-03")
+    admission = pd.Series(pd.to_datetime(["2025-01-01", "2025-01-01", "2025-01-01", None, None]))
+    result = derive.onset(ward_type, sample, admission)
+    # exactly 2 days: hospital; 1 day: community; 9 days: hospital; outpatients: community
+    assert list(result) == ["hospital", "community", "hospital", "community", "community"]
+
+
+def test_week_start_is_monday():
+    # 2025-01-05 is a Sunday, 2025-01-06 a Monday
+    ws = derive.week_start(ts("2025-01-05", "2025-01-06", "2025-01-08"))
+    assert list(ws.dt.strftime("%Y-%m-%d")) == ["2024-12-30", "2025-01-06", "2025-01-06"]
+
+
+# --- first isolate and deduplication ----------------------------------------
+
+
+def frame(rows):
+    df = pd.DataFrame(rows, columns=["isolate_id", "culture_id", "isolate_no", "patient_id", "organism", "specimen", "sample_date"])
+    df["sample_date"] = pd.to_datetime(df["sample_date"])
+    return df
+
+
+def test_dedup_keeps_earliest_per_patient_organism_specimen():
+    f = frame([
+        ("i2", "c2", 1, "P1", "E. coli", "urine", "2025-03-05"),
+        ("i1", "c1", 1, "P1", "E. coli", "urine", "2025-03-01"),
+        ("i3", "c3", 1, "P1", "E. coli", "blood", "2025-03-02"),
+        ("i4", "c4", 1, "P1", "S. aureus", "urine", "2025-03-02"),
+        ("i5", "c5", 1, "P2", "E. coli", "urine", "2025-03-02"),
+    ])
+    out = first_isolates(f, date(2025, 3, 1), date(2025, 3, 31))
+    assert sorted(out["isolate_id"]) == ["i1", "i3", "i4", "i5"]
+
+
+def test_dedup_is_within_the_window_not_over_history():
+    f = frame([
+        ("old", "c1", 1, "P1", "E. coli", "urine", "2025-01-01"),
+        ("new", "c2", 1, "P1", "E. coli", "urine", "2025-03-10"),
+    ])
+    out = first_isolates(f, date(2025, 3, 1), date(2025, 3, 31))
+    assert list(out["isolate_id"]) == ["new"]
+
+
+def test_dedup_breaks_same_day_ties_by_culture_and_isolate_no():
+    f = frame([
+        ("c1-2", "c1", 2, "P1", "E. coli", "urine", "2025-03-01"),
+        ("c1-1", "c1", 1, "P1", "E. coli", "urine", "2025-03-01"),
+    ])
+    assert list(first_isolates(f, date(2025, 3, 1), date(2025, 3, 1))["isolate_id"]) == ["c1-1"]
+
+
+def test_window_dates():
+    assert window_dates(date(2026, 9, 27), "28d") == (date(2026, 8, 31), date(2026, 9, 27))
+    assert window_dates(date(2026, 9, 27), "365d")[0] == date(2025, 9, 28)
+    assert window_dates(date(2026, 1, 1), "custom", date(2025, 1, 1), date(2026, 6, 1)) == (date(2025, 1, 1), date(2026, 1, 1))
+    with pytest.raises(ValueError):
+        window_dates(date(2026, 1, 1), "custom")
+
+
+# --- the real data ----------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def tables():
+    return load_tables()  # asserts 10,000 / 46,792 / 24,571 / 172,381
+
+
+@pytest.fixture(scope="module")
+def store(tables):
+    return DataStore(tables)
+
+
+def test_row_counts(tables):
+    for name, n in EXPECTED_COUNTS.items():
+        assert len(getattr(tables, name)) == n
+
+
+def test_load_rejects_wrong_counts(tmp_path):
+    src = Path(settings.data_dir)
+    for f in src.glob("*.csv"):
+        shutil.copy(f, tmp_path / f.name)
+    lines = (tmp_path / "patients.csv").read_text().splitlines()
+    (tmp_path / "patients.csv").write_text("\n".join(lines[:-1]) + "\n")
+    with pytest.raises(ValueError, match="patients: expected 10000 rows, got 9999"):
+        load_tables(tmp_path)
+
+
+def test_derived_columns_on_real_data(store):
+    f = store.isolates(date(2026, 9, 27))
+    assert len(f) == EXPECTED_COUNTS["isolates"]
+    assert set(f["onset"]) == {"community", "hospital"}
+    assert set(f["age_band"]) == {"0-17", "18-44", "45-64", "65-74", "75+"}
+    assert f["sex"].notna().all()
+    # only inpatient wards can be hospital-onset
+    assert set(f[f["onset"] == "hospital"]["ward_type"]) == {"in"}
+
+
+AS_OF_DATES = [date(2024, 6, 30), date(2025, 1, 15), date(2025, 8, 31), date(2025, 12, 31), date(2026, 5, 20)]
+
+
+def cut_tables(t: Tables, as_of: date) -> Tables:
+    """The data as it would have existed on as_of: no culture after it."""
+    cultures = t.cultures[t.cultures["sample_date"] <= pd.Timestamp(as_of)]
+    ids = set(cultures["culture_id"])
+    return Tables(
+        patients=t.patients,
+        cultures=cultures,
+        isolates=t.isolates[t.isolates["culture_id"].isin(ids)],
+        susceptibility=t.susceptibility[t.susceptibility["culture_id"].isin(ids)],
+        antibiotics=t.antibiotics,
+        wards=t.wards,
+    )
+
+
+@pytest.mark.parametrize("as_of", AS_OF_DATES)
+@pytest.mark.parametrize("window", ["28d", "365d"])
+def test_as_of_values_equal_values_on_cut_data(tables, store, as_of, window):
+    """Reusable as_of check: full data cut at as_of == data that never contained the future."""
+    cut = DataStore(cut_tables(tables, as_of))
+    full_first = store.first_isolates(as_of, window)
+    cut_first = cut.first_isolates(as_of, window)
+    pd.testing.assert_frame_equal(full_first.reset_index(drop=True), cut_first.reset_index(drop=True))
+    cols = ["ward_code", "specimen", "organism"]
+    pd.testing.assert_series_equal(
+        full_first.groupby(cols).size().sort_index(), cut_first.groupby(cols).size().sort_index()
+    )
+    pd.testing.assert_frame_equal(
+        store.susceptibility(full_first).reset_index(drop=True),
+        cut.susceptibility(cut_first).reset_index(drop=True),
+    )
+
+
+def test_view_never_shows_the_future(store):
+    as_of = date(2025, 6, 30)
+    assert store.isolates(as_of)["sample_date"].max() <= pd.Timestamp(as_of)
+    assert store.first_isolates(as_of, "365d")["sample_date"].max() <= pd.Timestamp(as_of)
+
+
+def test_views_are_cached_per_as_of(store):
+    a = store.first_isolates(date(2025, 6, 30), "28d")
+    assert store.first_isolates(date(2025, 6, 30), "28d") is a
+    assert store.first_isolates(date(2025, 7, 7), "28d") is not a

@@ -9,8 +9,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.models.alerts import AlertDetailQuery, SpreadingQuery, VolumeQuery, WardLinksQuery
-from app.models.data import CoverageQuery, OrganismMixQuery, SeriesQuery, SusceptibilityQuery
 from app.models.common import ProfileQuery
+from app.models.data import CoverageQuery, OrganismMixQuery, SeriesQuery, SusceptibilityQuery
 
 CATALOG: dict[str, type[BaseModel]] = {
     "ContextChips": ProfileQuery,

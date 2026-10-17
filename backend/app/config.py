@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     api_key: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:8080"
     as_of_default: date = date(2026, 9, 27)
+    data_dir: str = "data/synthetic_microbiology_dataset"
 
     @property
     def cors_origin_list(self) -> list[str]:

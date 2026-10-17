@@ -1,5 +1,4 @@
 import pytest
-
 from app.shrinkage import prior_from_rate, shrunk_rate
 
 

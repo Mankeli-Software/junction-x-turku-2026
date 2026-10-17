@@ -4,8 +4,9 @@ REST routes are generated from it now. The MCP server and the agent tools read
 the same registry later (name, description, input/output JSON Schema, handler).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated, Callable, Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
