@@ -38,6 +38,15 @@ def test_put_dashboard_roundtrip():
     assert client.get("/v1/dashboard?user_id=u1").json()["role"] == "lab"
 
 
+def test_put_dashboard_refuses_an_oversized_layout():
+    pin = {"widget": "AlertCard", "params": {}}
+    assert client.put("/v1/dashboard", json={"user_id": "u" * 65, "role": "lab", "layout": []}).status_code == 422
+    assert client.put("/v1/dashboard", json={"user_id": "u1", "role": "lab", "layout": [pin] * 51}).status_code == 422
+    big = {"widget": "AlertCard", "params": {"note": "x" * 20_000}}
+    assert client.put("/v1/dashboard", json={"user_id": "u1", "role": "lab", "layout": [big]}).status_code == 422
+    assert client.put("/v1/dashboard", json={"user_id": "u1", "role": "lab", "layout": [pin] * 50}).status_code == 200
+
+
 def test_pneumonia_is_honest():
     r = client.get("/v1/coverage?infection_type=pneumonia")
     assert "not in this data" in r.json()["note"]

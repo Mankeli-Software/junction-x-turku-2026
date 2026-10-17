@@ -8,14 +8,12 @@ With no `API_KEY` set (local work, tests) everything is open.
 """
 
 import hmac
-import re
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings
 
-ORIGIN_REGEX = re.compile(r"https://.*\.azurestaticapps\.net")
 OPEN_PATHS = ("/v1/data-status",)
 
 
@@ -32,8 +30,9 @@ def _key_ok(scope: Scope) -> bool:
 
 
 def _browser_origin(scope: Scope) -> bool:
-    origin = _header(scope, b"origin")
-    return origin in settings.cors_origin_list or bool(ORIGIN_REGEX.fullmatch(origin))
+    # Only the origins listed in CORS_ORIGINS (in Azure: this app's Static Web App and its custom
+    # domain), not every *.azurestaticapps.net site.
+    return _header(scope, b"origin") in settings.cors_origin_list
 
 
 class ApiKeyMiddleware:

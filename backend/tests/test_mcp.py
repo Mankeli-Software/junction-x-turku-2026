@@ -61,12 +61,15 @@ def test_mcp_needs_the_key_when_one_is_set(client, keyed):
     assert rpc(client, "tools/list", headers={"Authorization": "Bearer secret"}).status_code == 200
 
 
-def test_rest_needs_the_key_except_from_the_browser_app_and_the_probes(client, keyed):
+def test_rest_needs_the_key_except_from_the_browser_app_and_the_probes(client, keyed, monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "https://polite-desert-1.azurestaticapps.net")
     url = "/v1/volume"
     assert client.get(url).status_code == 401
     assert client.get(url, headers={"X-API-Key": "secret"}).status_code == 200
     assert client.get(url, headers={"Origin": "https://polite-desert-1.azurestaticapps.net"}).status_code == 200
     assert client.get(url, headers={"Origin": "https://evil.example"}).status_code == 401
+    # another Static Web App is not this app
+    assert client.get(url, headers={"Origin": "https://evil-1.azurestaticapps.net"}).status_code == 401
     assert client.get("/healthz").status_code != 401
     assert client.get("/v1/data-status").status_code != 401
     assert client.options(url, headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"}).status_code != 401

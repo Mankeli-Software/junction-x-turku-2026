@@ -9,6 +9,7 @@ from app.agent.route import router as agent_router
 from app.auth import ApiKeyMiddleware
 from app.config import settings
 from app.functions import alerts, dashboard, data  # noqa: F401  (registers functions)
+from app.ratelimit import RateLimitMiddleware
 from app.registry import REGISTRY, build_router
 from app.widgets.catalog import catalog_schemas
 
@@ -32,10 +33,11 @@ if settings.preload_warm:
 
 app = FastAPI(title="AMRight API", version="0.1.0", lifespan=lifespan)
 
+# Inside CORS, so the browser app can read a 429.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_origin_regex=r"https://.*\.azurestaticapps\.net",
     allow_methods=["*"],
     allow_headers=["*"],
 )

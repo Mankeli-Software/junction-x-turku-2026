@@ -46,6 +46,10 @@ class RemoteAgent implements ChatAgent {
         yield const AgentUnavailable();
         return;
       }
+      if (res.statusCode == 429) {
+        yield const AgentError('Too many questions from this network. Try again in a few minutes.');
+        return;
+      }
       if (res.statusCode != 200) {
         yield AgentError('The AI service answered ${res.statusCode}.');
         return;

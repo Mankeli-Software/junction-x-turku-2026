@@ -120,6 +120,15 @@ void main() {
     expect(await agent.answer('hi', _ctx()).toList(), [isA<AgentUnavailable>()]);
   });
 
+  test('429 says the limit was reached', () async {
+    final agent = RemoteAgent(
+      'http://api',
+      client: MockClient((_) async => http.Response('{"detail":"slow down"}', 429)),
+    );
+    final events = await agent.answer('hi', _ctx()).toList();
+    expect((events.single as AgentError).message, contains('Too many questions'));
+  });
+
   test('an error event keeps the answer and says why it stopped', () async {
     final agent = RemoteAgent(
       'http://api',

@@ -150,8 +150,9 @@ jobs:
       - name: Check a route that reads the dataset
         run: |
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
-          # Without a browser Origin or the API key the API answers 401 (the CI identity cannot read Key Vault).
-          curl -fsS --max-time 120 -H "Origin: https://ci.azurestaticapps.net" "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
+          # Without the app's own Origin or the API key the API answers 401 (the CI identity cannot read Key Vault).
+          SWA=$(az staticwebapp list -g "$RG" --query "[?tags.project=='aei' && tags.env=='demo'].defaultHostname | [0]" -o tsv)
+          curl -fsS --max-time 120 -H "Origin: https://$SWA" "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
             | python -c "import json,sys; d=json.load(sys.stdin); n=d['annual']['rows'][0]['resistance']['n']; print('annual n =', n); sys.exit(0 if n > 0 else 1)"
       - name: Check that /mcp is mounted and asks for the API key
         run: |
