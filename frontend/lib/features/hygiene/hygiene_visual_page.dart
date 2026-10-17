@@ -1259,13 +1259,6 @@ class _FlowState extends State<_Flow> {
                           ],
                         ),
                       ),
-                    _HeadsUpButton(
-                      enabled: _to != null,
-                      onTap: () => cubit.draft(
-                        _to!,
-                        headsUpMessage(from, organism: null, phenotype: shown?.phenotype),
-                      ),
-                    ),
                   ],
                 ),
                 if (matches.isNotEmpty)
@@ -1296,6 +1289,21 @@ class _FlowState extends State<_Flow> {
                         ),
                     ],
                   ),
+                Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _HeadsUpButton(
+                      enabled: _to != null,
+                      onTap: () => cubit.draft(
+                        _to!,
+                        headsUpMessage(from, organism: null, phenotype: shown?.phenotype),
+                      ),
+                    ),
+                  ],
+                ),
                 BlocBuilder<HeadsUpCubit, HeadsUpState>(
                   builder: (context, s) => AnimatedSize(
                     duration: AmrMotion.base,
