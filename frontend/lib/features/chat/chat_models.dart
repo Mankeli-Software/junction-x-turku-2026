@@ -7,6 +7,27 @@ import '../../core/models/dashboard.dart';
 /// params, the one free-text summary, and the interactive pieces. The AI never sends numbers.
 sealed class AnswerPart extends Equatable {
   const AnswerPart();
+
+  factory AnswerPart.fromJson(Json j) => switch (j['t']) {
+    'widget' => WidgetPart(WidgetPlacement.fromJson(j['placement']! as Json)),
+    'clarify' => ClarifyPart(
+      j['question']! as String,
+      (j['options']! as List).cast<String>(),
+      chosen: j['chosen'] as String?,
+    ),
+    _ => InShortPart(j['text'] as String?),
+  };
+
+  Json toJson() => switch (this) {
+    WidgetPart(:final placement) => {'t': 'widget', 'placement': placement.toJson()},
+    InShortPart(:final text) => {'t': 'inShort', 'text': text},
+    ClarifyPart(:final question, :final options, :final chosen) => {
+      't': 'clarify',
+      'question': question,
+      'options': options,
+      'chosen': chosen,
+    },
+  };
 }
 
 /// A catalog widget; it loads its own numbers.
@@ -52,6 +73,32 @@ class ChatAction extends Equatable {
 
   const ChatAction.ask(this.label) : kind = ChatActionKind.ask, primary = false, payload = null;
 
+  factory ChatAction.fromJson(Json j) {
+    final kind = ChatActionKind.values.byName(j['kind']! as String);
+    final p = j['payload'];
+    return ChatAction(
+      j['label']! as String,
+      kind,
+      primary: j['primary'] == true,
+      payload: switch (kind) {
+        ChatActionKind.openAnswer => PatientProfile.fromJson(p! as Json),
+        ChatActionKind.pin => WidgetPlacement.fromJson(p! as Json),
+        _ => p,
+      },
+    );
+  }
+
+  Json toJson() => {
+    'label': label,
+    'kind': kind.name,
+    'primary': primary,
+    'payload': switch (payload) {
+      final PatientProfile p => p.toQuery(),
+      final WidgetPlacement w => w.toJson(),
+      final other => other,
+    },
+  };
+
   final String label;
   final ChatActionKind kind;
   final bool primary;
@@ -66,7 +113,35 @@ class ChatAction extends Equatable {
 sealed class ChatEntry extends Equatable {
   const ChatEntry(this.id);
 
+  /// A saved entry; an answer that was still building comes back finished.
+  factory ChatEntry.fromJson(Json j) => j['t'] == 'user'
+      ? UserEntry(j['id']! as int, j['text']! as String, short: j['short'] == true)
+      : AnswerEntry(
+          j['id']! as int,
+          builtFrom: (j['builtFrom'] as List? ?? const []).cast<String>(),
+          note: j['note'] as String?,
+          parts: jsonList(j['parts']).map(AnswerPart.fromJson).toList(),
+          actions: jsonList(j['actions']).map(ChatAction.fromJson).toList(),
+          suggestions: (j['suggestions'] as List? ?? const []).cast<String>(),
+          streaming: false,
+          profile: j['profile'] == null ? null : PatientProfile.fromJson(j['profile']! as Json),
+        );
+
   final int id;
+
+  Json toJson() => switch (this) {
+    UserEntry(:final text, :final short) => {'t': 'user', 'id': id, 'text': text, 'short': short},
+    final AnswerEntry a => {
+      't': 'answer',
+      'id': id,
+      'builtFrom': a.builtFrom,
+      'note': a.note,
+      'parts': [for (final p in a.parts) p.toJson()],
+      'actions': [for (final x in a.actions) x.toJson()],
+      'suggestions': a.suggestions,
+      'profile': a.profile?.toQuery(),
+    },
+  };
 }
 
 class UserEntry extends ChatEntry {
@@ -136,4 +211,31 @@ class AnswerEntry extends ChatEntry {
 
   @override
   List<Object?> get props => [id, builtFrom, note, status, parts, actions, suggestions, streaming];
+}
+
+/// One chat in the history: its entries and when it last changed.
+class Conversation extends Equatable {
+  const Conversation({required this.id, required this.entries, required this.updatedAt});
+
+  factory Conversation.fromJson(Json j) => Conversation(
+    id: j['id']! as String,
+    entries: jsonList(j['entries']).map(ChatEntry.fromJson).toList(),
+    updatedAt: DateTime.parse(j['updatedAt']! as String),
+  );
+
+  final String id;
+  final List<ChatEntry> entries;
+  final DateTime updatedAt;
+
+  /// The first question asked.
+  String get title => entries.whereType<UserEntry>().firstOrNull?.text ?? 'New chat';
+
+  Json toJson() => {
+    'id': id,
+    'entries': [for (final e in entries) e.toJson()],
+    'updatedAt': updatedAt.toIso8601String(),
+  };
+
+  @override
+  List<Object?> get props => [id, entries, updatedAt];
 }

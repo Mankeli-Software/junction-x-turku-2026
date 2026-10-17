@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -10,9 +12,21 @@ import 'agent/chat_agent.dart';
 import 'chat_models.dart';
 
 class ChatState extends Equatable {
-  const ChatState({this.entries = const [], this.aiUnavailable = false});
+  const ChatState({
+    required this.currentId,
+    required this.updatedAt,
+    this.entries = const [],
+    this.history = const [],
+    this.aiUnavailable = false,
+  });
 
+  /// The open conversation.
+  final String currentId;
   final List<ChatEntry> entries;
+  final DateTime updatedAt;
+
+  /// The other conversations, newest first.
+  final List<Conversation> history;
 
   /// The agent answered 503 or failed: show the quick-form fallback, keep the numbers working.
   final bool aiUnavailable;
@@ -25,19 +39,119 @@ class ChatState extends Equatable {
   PatientProfile? get profile =>
       entries.whereType<AnswerEntry>().map((a) => a.profile).nonNulls.lastOrNull;
 
+  /// Every conversation with something in it, the open one included, newest first.
+  List<Conversation> get chats => [
+    if (entries.isNotEmpty) Conversation(id: currentId, entries: entries, updatedAt: updatedAt),
+    ...history,
+  ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+  ChatState copyWith({
+    String? currentId,
+    List<ChatEntry>? entries,
+    DateTime? updatedAt,
+    List<Conversation>? history,
+    bool? aiUnavailable,
+  }) => ChatState(
+    currentId: currentId ?? this.currentId,
+    entries: entries ?? this.entries,
+    updatedAt: updatedAt ?? this.updatedAt,
+    history: history ?? this.history,
+    aiUnavailable: aiUnavailable ?? this.aiUnavailable,
+  );
+
   @override
-  List<Object?> get props => [entries, aiUnavailable];
+  List<Object?> get props => [currentId, entries, updatedAt, history, aiUnavailable];
 }
 
-/// One conversation per signed-in user. Sends questions to the [ChatAgent] and folds its
-/// streamed events into the last answer.
+/// The signed-in user's conversations: the open one and the history, kept in the browser
+/// between reloads. Sends questions to a [ChatAgent] (a fresh one per conversation) and folds
+/// its streamed events into the last answer.
 class ChatCubit extends Cubit<ChatState> {
-  ChatCubit(this._agent, this._session) : super(const ChatState());
+  ChatCubit(this._newAgent, this._session)
+    : super(ChatState(currentId: _newId(), updatedAt: DateTime.now())) {
+    _restore();
+  }
 
-  final ChatAgent _agent;
+  /// At most this many conversations are kept.
+  static const maxChats = 30;
+
+  final ChatAgent Function() _newAgent;
   final SessionCubit _session;
+  late ChatAgent _agent = _newAgent();
   StreamSubscription<AgentEvent>? _sub;
   int _nextId = 0;
+
+  static String _newId() => DateTime.now().microsecondsSinceEpoch.toString();
+
+  String get _key => 'chat.history.${_session.state.user?.id}';
+
+  /// Starts an empty conversation; the open one moves to the history. Every ask field outside
+  /// the chat starts one, so a question from the home screen never lands in an old thread.
+  void newChat() {
+    if (state.entries.isEmpty) return;
+    stop();
+    _agent = _newAgent();
+    _nextId = 0;
+    emit(
+      ChatState(
+        currentId: _newId(),
+        updatedAt: DateTime.now(),
+        history: state.chats,
+        aiUnavailable: state.aiUnavailable,
+      ),
+    );
+    _save();
+  }
+
+  /// Opens a conversation from the history.
+  void open(String id) {
+    if (id == state.currentId) return;
+    final chat = state.history.where((c) => c.id == id).firstOrNull;
+    if (chat == null) return;
+    stop();
+    _agent = _newAgent();
+    _nextId = _after(chat.entries);
+    emit(
+      ChatState(
+        currentId: chat.id,
+        entries: chat.entries,
+        updatedAt: chat.updatedAt,
+        history: [
+          for (final c in state.chats)
+            if (c.id != id) c,
+        ],
+        aiUnavailable: state.aiUnavailable,
+      ),
+    );
+    _save();
+  }
+
+  /// Removes a conversation; deleting the open one leaves an empty chat.
+  void delete(String id) {
+    if (id == state.currentId) {
+      stop();
+      _agent = _newAgent();
+      _nextId = 0;
+      emit(
+        ChatState(
+          currentId: _newId(),
+          updatedAt: DateTime.now(),
+          history: state.history,
+          aiUnavailable: state.aiUnavailable,
+        ),
+      );
+    } else {
+      emit(
+        state.copyWith(
+          history: [
+            for (final c in state.history)
+              if (c.id != id) c,
+          ],
+        ),
+      );
+    }
+    _save();
+  }
 
   /// Asks [text]; [patient] (a question from an answer page) replaces the patient of the
   /// conversation so far.
@@ -52,15 +166,16 @@ class ChatCubit extends Cubit<ChatState> {
     final answerId = _nextId + 1;
     _nextId += 2;
     emit(
-      ChatState(
+      state.copyWith(
         entries: [
           ...state.entries,
           UserEntry(answerId - 1, text.trim(), short: short),
           AnswerEntry(answerId),
         ],
-        aiUnavailable: state.aiUnavailable,
+        updatedAt: DateTime.now(),
       ),
     );
+    _save();
     unawaited(_sub?.cancel()); // the previous answer is finished or being replaced
     final done = Completer<void>();
     _sub = _agent
@@ -70,6 +185,7 @@ class ChatCubit extends Cubit<ChatState> {
           onError: (Object _) => _apply(answerId, const AgentUnavailable()),
           onDone: () {
             _update(answerId, (a) => a.copyWith(streaming: false, clearStatus: true));
+            _save();
             done.complete();
           },
         );
@@ -112,17 +228,13 @@ class ChatCubit extends Cubit<ChatState> {
         ],
       ),
     );
+    _save();
   }
 
   void stop() {
     _sub?.cancel();
     final a = state.lastAnswer;
     if (a != null) _update(a.id, (x) => x.copyWith(streaming: false, clearStatus: true));
-  }
-
-  void clear() {
-    _sub?.cancel();
-    emit(ChatState(aiUnavailable: state.aiUnavailable));
   }
 
   void _apply(int id, AgentEvent e) {
@@ -137,7 +249,7 @@ class ChatCubit extends Cubit<ChatState> {
         _update(id, (a) => a.copyWith(actions: actions, suggestions: suggestions));
       case AgentUnavailable():
         emit(
-          ChatState(
+          state.copyWith(
             entries: [
               for (final x in state.entries)
                 if (x.id != id) x,
@@ -152,10 +264,48 @@ class ChatCubit extends Cubit<ChatState> {
   void _update(int id, AnswerEntry Function(AnswerEntry) f) {
     if (isClosed) return;
     emit(
-      ChatState(
+      state.copyWith(
         entries: [for (final e in state.entries) e is AnswerEntry && e.id == id ? f(e) : e],
-        aiUnavailable: state.aiUnavailable,
       ),
+    );
+  }
+
+  /// The next free entry id after [entries].
+  static int _after(List<ChatEntry> entries) => entries.fold(-1, (m, e) => math.max(m, e.id)) + 1;
+
+  /// Brings back the saved conversations and reopens the one that was open.
+  void _restore() {
+    final raw = _session.prefs.getString(_key);
+    if (raw == null) return;
+    try {
+      final saved = jsonDecode(raw) as Json;
+      final chats = jsonList(saved['chats']).map(Conversation.fromJson).toList();
+      final open = chats.where((c) => c.id == saved['current']).firstOrNull;
+      _nextId = open == null ? 0 : _after(open.entries);
+      emit(
+        state.copyWith(
+          currentId: open?.id,
+          entries: open?.entries,
+          updatedAt: open?.updatedAt,
+          history: [
+            for (final c in chats)
+              if (c != open) c,
+          ],
+        ),
+      );
+    } on Object {
+      _session.prefs.remove(_key); // an unreadable save starts afresh
+    }
+  }
+
+  void _save() {
+    if (isClosed || _session.state.user == null) return;
+    _session.prefs.setString(
+      _key,
+      jsonEncode({
+        'current': state.currentId,
+        'chats': [for (final c in state.chats.take(maxChats)) c.toJson()],
+      }),
     );
   }
 

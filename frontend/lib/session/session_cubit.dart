@@ -34,6 +34,9 @@ class SessionCubit extends Cubit<SessionState> {
 
   final SharedPreferences _prefs;
 
+  /// Where per-user state (the chat history) is kept between reloads.
+  SharedPreferences get prefs => _prefs;
+
   static Future<SessionCubit> restore() async {
     final prefs = await SharedPreferences.getInstance();
     final asOf = DateTime.tryParse(prefs.getString(_asOfKey) ?? '');

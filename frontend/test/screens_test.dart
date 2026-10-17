@@ -2,6 +2,8 @@ import 'package:amiright/app/app.dart';
 import 'package:amiright/core/api/transport.dart';
 import 'package:amiright/session/session_cubit.dart';
 import 'package:amiright/features/chat/widgets/ask_launcher.dart';
+import 'package:amiright/features/chat/widgets/chat_blocks.dart';
+import 'package:amiright/features/chat/widgets/chat_history.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -122,5 +124,41 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
     }
     expect(find.textContaining('oral options only'), findsOneWidget);
+  });
+
+  testWidgets('chat: a question from outside starts a new chat; the old one is in the history', (
+    tester,
+  ) async {
+    await open(tester, 'aino', '/chat?q=What is causing UTIs now?');
+    await tester.pump(const Duration(seconds: 3));
+    final bubble = find.byType(UserBubble);
+    Finder asked(String q) => find.descendant(of: bubble, matching: find.text(q));
+    expect(asked('What is causing UTIs now?'), findsOneWidget);
+
+    GoRouter.of(
+      tester.element(find.byType(Navigator).first),
+    ).go('/chat?q=Is trimethoprim still OK?');
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    expect(asked('Is trimethoprim still OK?'), findsOneWidget);
+    expect(asked('What is causing UTIs now?'), findsNothing);
+
+    // The first chat waits in the history panel and opens again.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ChatHistory),
+        matching: find.text('What is causing UTIs now?'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(asked('What is causing UTIs now?'), findsOneWidget);
+    expect(asked('Is trimethoprim still OK?'), findsNothing);
+
+    // New chat: back to the welcome.
+    await tester.tap(find.text('New chat'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(bubble, findsNothing);
+    expect(find.text('Recent chats'), findsOneWidget);
   });
 }

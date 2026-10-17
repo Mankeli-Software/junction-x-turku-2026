@@ -86,8 +86,10 @@ class _UserScope extends StatelessWidget {
           create: (context) => DashboardCubit(context.read<AmrRepository>(), user)..load(),
         ),
         BlocProvider(
-          create: (context) =>
-              ChatCubit(ScriptedAgent(context.read<AmrRepository>()), context.read<SessionCubit>()),
+          create: (context) {
+            final repo = context.read<AmrRepository>();
+            return ChatCubit(() => ScriptedAgent(repo), context.read<SessionCubit>());
+          },
         ),
       ],
       child: child,

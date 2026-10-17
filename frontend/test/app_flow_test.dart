@@ -1,11 +1,16 @@
 import 'package:amiright/app/app.dart';
 import 'package:amiright/core/api/transport.dart';
+import 'package:amiright/features/chat/widgets/chat_blocks.dart';
 import 'package:amiright/session/session_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// [text] in the conversation itself (the history panel repeats a chat's first question).
+Finder inBubble(String text) =>
+    find.descendant(of: find.byType(UserBubble), matching: find.text(text));
 
 void main() {
   setUp(() {
@@ -99,7 +104,7 @@ void main() {
 
     await settle();
     expect(
-      find.text(
+      inBubble(
         "My patient is a woman aged 75+ on Urology. I'm not sure what kind of infection it is.",
       ),
       findsOneWidget,
@@ -148,7 +153,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
     }
     expect(find.text('Ask the AI'), findsNothing);
-    expect(find.text('woman over 75 with a UTI'), findsOneWidget);
+    expect(inBubble('woman over 75 with a UTI'), findsOneWidget);
     expect(find.text('Who is your patient?'), findsNothing);
   });
 }
