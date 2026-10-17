@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import db, warmup
+from app import db, mcp_server, warmup
 from app.agent.route import router as agent_router
+from app.auth import ApiKeyMiddleware
 from app.config import settings
 from app.functions import alerts, dashboard, data  # noqa: F401  (registers functions)
 from app.registry import REGISTRY, build_router
@@ -21,7 +22,8 @@ async def lifespan(_: FastAPI):
         from app.datalayer.store import get_store
 
         threading.Thread(target=lambda: alert_engine.warm_up(get_store()), daemon=True, name="alert-warm-up").start()
-    yield
+    async with mcp_server.server.session_manager.run():  # the mounted /mcp app has no lifespan of its own here
+        yield
 
 
 if settings.preload_warm:
@@ -40,6 +42,7 @@ app.add_middleware(
 
 app.include_router(build_router("/v1"))
 app.include_router(agent_router)
+app.add_middleware(ApiKeyMiddleware)
 
 
 @app.get("/healthz")
@@ -89,3 +92,7 @@ def functions():
 @app.get("/v1/widgets", tags=["meta"])
 def widgets():
     return catalog_schemas()
+
+
+# Last, so that every route above matches first: the mounted app answers /mcp only.
+app.mount("/", mcp_server.app)

@@ -150,8 +150,16 @@ jobs:
       - name: Check a route that reads the dataset
         run: |
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
-          curl -fsS --max-time 120 "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
+          # Without a browser Origin or the API key the API answers 401 (the CI identity cannot read Key Vault).
+          curl -fsS --max-time 120 -H "Origin: https://ci.azurestaticapps.net" "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
             | python -c "import json,sys; d=json.load(sys.stdin); n=d['annual']['rows'][0]['resistance']['n']; print('annual n =', n); sys.exit(0 if n > 0 else 1)"
+      - name: Check that /mcp is mounted and asks for the API key
+        run: |
+          HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 -X POST "https://$HOST/mcp" \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          echo "POST /mcp without a key: $code"; [ "$code" = 401 ]
       - name: Check the database row counts
         run: |
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)

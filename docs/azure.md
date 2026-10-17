@@ -70,3 +70,7 @@ App Service plan: Basic B3 (4 vCPU, 7 GB, about $52 a month at list price in Nor
 Startup: `gunicorn --preload` with `PRELOAD_WARM=true` loads the dataset from Postgres and runs the screen queries (`backend/app/warmup.py`) once in the master process, then forks two workers that share the result. The port opens after that (about a minute), so `WEBSITES_CONTAINER_START_TIME_LIMIT` is 600. `/v1/data-status` shows `warm_up`.
 
 No login (the API key only protects non-browser clients), public endpoints, one App Service instance, Postgres open to Azure services plus listed IPs, synthetic data only. Real data would need private networking and authentication.
+
+## MCP server
+
+`https://<web app>/mcp` (streamable HTTP, stateless) exposes the registry's read-only functions as tools. Send the API key as `X-API-Key` or `Authorization: Bearer`. Get it with `az keyvault secret show --vault-name $VAULT -n api-key --query value -o tsv`. Claude Code: `claude mcp add --transport http amright https://<web app>/mcp --header "X-API-Key: <key>"`. REST under `/v1` takes the same key from non-browser callers; the Flutter app is let through by its origin. This is demo-grade protection (an `Origin` header can be forged).

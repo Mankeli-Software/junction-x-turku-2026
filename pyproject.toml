@@ -13,6 +13,7 @@ dependencies = [
     "scipy>=1.13",
     "psycopg[binary]>=3.2",
     "anthropic>=1.15,<2",
+    "mcp>=2.3",
 ]
 
 [project.optional-dependencies]
