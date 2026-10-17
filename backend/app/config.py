@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +22,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:8080"
     as_of_default: date = date(2026, 9, 27)
     warm_up: bool = True  # compute the alert signals in the background at startup
+    # Chat agent (PLAT-2). The key comes from Key Vault in Azure; without it the agent route returns 503.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-5-5"
+    agent_effort: Literal["low", "medium", "high"] = "medium"
+    agent_fake: bool = False  # stream a fixed screen from a scripted client, no API call
+    agent_fallbacks: bool = True  # server-side refusal fallback beta (works with streaming; set false if the API rejects it)
     data_dir: str = _default_data_dir()
 
     @property

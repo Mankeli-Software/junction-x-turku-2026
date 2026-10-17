@@ -5,6 +5,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import db
+from app.agent.route import router as agent_router
 from app.config import settings
 from app.functions import alerts, dashboard, data  # noqa: F401  (registers functions)
 from app.registry import REGISTRY, build_router
@@ -33,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(build_router("/v1"))
+app.include_router(agent_router)
 
 
 @app.get("/healthz")

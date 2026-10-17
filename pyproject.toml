@@ -12,6 +12,7 @@ dependencies = [
     "pandas>=2.2",
     "scipy>=1.13",
     "psycopg[binary]>=3.2",
+    "anthropic>=1.15,<2",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +22,8 @@ dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
 where = ["backend"]
 
 [tool.pytest.ini_options]
+markers = ["live: calls the real Claude API (needs ANTHROPIC_API_KEY); run with -m live"]
+addopts = "-m \"not live\""
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 
