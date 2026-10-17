@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -21,6 +23,7 @@ class QueryView<Q extends AsOfQuery<Q>, T> extends StatefulWidget {
     this.loading,
     this.errorMessage = 'Could not load this right now.',
     this.error,
+    this.updatingLabel = true,
   });
 
   final Q query;
@@ -31,6 +34,10 @@ class QueryView<Q extends AsOfQuery<Q>, T> extends StatefulWidget {
 
   /// Replaces the inline error and its retry, for content that can go without (the AI's line).
   final Widget Function(BuildContext context, Object error)? error;
+
+  /// While new numbers load over old ones: the "Updating…" label as well as the bar. Off for a
+  /// line of text the label would cover.
+  final bool updatingLabel;
 
   @override
   State<QueryView<Q, T>> createState() => _QueryViewState<Q, T>();
@@ -76,11 +83,22 @@ class _QueryViewState<Q extends AsOfQuery<Q>, T> extends State<QueryView<Q, T>> 
         builder: (context, s) {
           final Widget child;
           if (s.hasData) {
-            child = AnimatedOpacity(
+            // The same tree loading or not, so the content keeps its state between loads.
+            child = Stack(
               key: const ValueKey('data'),
-              opacity: s.loading ? 0.55 : 1,
-              duration: AmrMotion.base,
-              child: widget.builder(context, s.data as T),
+              fit: StackFit.passthrough,
+              children: [
+                AnimatedOpacity(
+                  opacity: s.loading ? 0.55 : 1,
+                  duration: AmrMotion.base,
+                  child: widget.builder(context, s.data as T),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: _Updating(active: s.loading, label: widget.updatingLabel),
+                  ),
+                ),
+              ],
             );
           } else if (s.error != null && widget.error != null) {
             child = KeyedSubtree(
@@ -116,6 +134,113 @@ class _QueryViewState<Q extends AsOfQuery<Q>, T> extends State<QueryView<Q, T>> 
           );
         },
       ),
+    );
+  }
+}
+
+/// Over content that is being replaced: a thin moving bar along the top and an "Updating…"
+/// label, shown only when the load takes longer than [_delay], so remembered results that come
+/// back at once do not flicker.
+class _Updating extends StatefulWidget {
+  const _Updating({required this.active, required this.label});
+
+  final bool active;
+  final bool label;
+
+  @override
+  State<_Updating> createState() => _UpdatingState();
+}
+
+class _UpdatingState extends State<_Updating> {
+  static const _delay = Duration(milliseconds: 250);
+  Timer? _timer;
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_Updating old) {
+    super.didUpdateWidget(old);
+    if (old.active != widget.active) _sync();
+  }
+
+  void _sync() {
+    _timer?.cancel();
+    if (!widget.active) {
+      if (_shown) setState(() => _shown = false);
+      return;
+    }
+    _timer = Timer(_delay, () {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: _shown ? 1 : 0,
+      duration: AmrMotion.base,
+      // Not built until shown: an indeterminate bar animates every frame.
+      child: !_shown
+          ? const SizedBox.shrink()
+          : Stack(
+              children: [
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: ClipRRect(
+                    borderRadius: AmrRadius.pill,
+                    child: LinearProgressIndicator(
+                      minHeight: 3,
+                      color: AmrColors.violet,
+                      backgroundColor: AmrColors.lavenderPale,
+                    ),
+                  ),
+                ),
+                if (widget.label)
+                  Positioned(
+                    top: 10,
+                    right: 0,
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(10, 5, 12, 5),
+                        decoration: const BoxDecoration(
+                          color: AmrColors.white,
+                          borderRadius: AmrRadius.pill,
+                          boxShadow: AmrShadows.sm,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AmrColors.violet,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('Updating…', style: AmrText.body(13, weight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

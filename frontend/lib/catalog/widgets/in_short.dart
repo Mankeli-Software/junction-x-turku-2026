@@ -68,6 +68,7 @@ class AiInShort<Q extends AsOfQuery<Q>> extends StatelessWidget {
     fetch: fetch,
     loading: const InShortCard(loading: true),
     error: (_, _) => const InShortCard(),
+    updatingLabel: false, // one line of text: the bar is enough
     builder: (_, s) => InShortCard(text: s.text),
   );
 }
