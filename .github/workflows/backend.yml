@@ -8,7 +8,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write  # the deploy job moves the deployed-backend tag
 
 # One deploy at a time; a second push waits instead of overlapping the first.
 concurrency:
@@ -16,6 +16,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The tests run for every backend change. The signals build and the deploy run only when something
+  # that ends up in the deployed app changed: the app code or the dependencies. A change to the tests,
+  # this workflow or the docs next to it does not need a new deploy (run the workflow by hand to force one).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.diff.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: diff
+        run: |
+          # Compare with the last commit that was actually deployed (the tag the deploy job moves), not with
+          # the previous push: a queued run can be replaced by a newer one, and its change must still ship.
+          BASE=$(git rev-parse -q --verify "refs/tags/deployed-backend^{commit}" || true)
+          if [ "${{ github.event_name }}" = workflow_dispatch ] || [ -z "$BASE" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "forced, or nothing deployed by this workflow yet"; exit 0
+          fi
+          CHANGED=$(git diff --name-only "$BASE" "${{ github.sha }}")
+          echo "changed since the last deploy ($BASE):"; echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^(backend/app/|pyproject\.toml$)'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "-> the deployed app changed"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"; echo "-> nothing in the deployed app changed; tests only"
+          fi
+
   test:
     runs-on: ubuntu-latest
     services:
@@ -36,6 +62,8 @@ jobs:
   # Runs at the same time as the tests. Without the file the app spends minutes computing the
   # same numbers on the small App Service plan after every deploy.
   signals:
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +79,8 @@ jobs:
           retention-days: 3
 
   deploy:
-    needs: [test, signals]
+    needs: [changes, test, signals]
+    if: needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     # The App Service build takes about 5 minutes; this is only a ceiling for a run that really is stuck.
     timeout-minutes: 25
@@ -144,3 +173,7 @@ jobs:
             echo "attempt $i did not pass; waiting"; sleep 15
           done
           exit 1
+      - name: Remember what is deployed
+        run: |
+          git tag -f deployed-backend "${{ github.sha }}"
+          git push -f origin refs/tags/deployed-backend
