@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../app/router.dart';
 import '../../core/format.dart';
 import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
@@ -18,13 +19,22 @@ String taglineFor(Role? role) => switch (role) {
   null => 'Know what works for your patient this week.',
 };
 
+/// Goes to the signed-in user's home screen (the login page when nobody is signed in).
+void goHome(BuildContext context) {
+  final user = context.read<SessionCubit>().state.user;
+  context.go(user == null ? Routes.login : Routes.homeFor(user.role));
+}
+
 String replayLabel(SessionState s) =>
     s.isLive ? 'Data to ${day(s.asOf)}' : 'Replay · ${day(s.asOf)}';
 
 /// Brand, tagline, replay date, user and switch user. On a phone: brand and avatar only; the
 /// avatar opens a sheet with the rest.
 class TopBar extends StatelessWidget {
-  const TopBar({super.key, this.trailing, this.subtitle});
+  const TopBar({super.key, this.trailing, this.subtitle, this.breadcrumb});
+
+  /// Replaces the tagline with a breadcrumb whose first part can be tapped.
+  final Widget? breadcrumb;
 
   /// Replaces the session controls (the login page shows a "Proof of concept" pill).
   final Widget? trailing;
@@ -40,10 +50,16 @@ class TopBar extends StatelessWidget {
     final brand = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('AMRight', style: AmrText.brand),
+        Pressable(
+          onTap: () => goHome(context),
+          pressScale: 1,
+          builder: (_, _) => Text('AMRight', style: AmrText.brand),
+        ),
         if (!compact) ...[
           const SizedBox(width: 22),
-          Flexible(child: Text(subtitle ?? taglineFor(user?.role), style: AmrText.body(15))),
+          Flexible(
+            child: breadcrumb ?? Text(subtitle ?? taglineFor(user?.role), style: AmrText.body(15)),
+          ),
         ],
       ],
     );

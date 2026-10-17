@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../shell/top_bar.dart';
 
 import '../../catalog/catalog.dart';
 import '../../catalog/widgets/in_short.dart';
@@ -33,7 +34,7 @@ class ComponentsPage extends StatelessWidget {
         gap: AmrSpace.x40,
         children: [
           ColumnGap([
-            Breadcrumb(const ['AMRight', 'Component catalog']),
+            Breadcrumb(['AMRight', 'Component catalog'], onTapFirst: () => goHome(context)),
             Text('What the AI can place', style: AmrText.display(context, max: 76)),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 820),

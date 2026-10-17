@@ -104,7 +104,12 @@ class _ChatPageState extends State<ChatPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const TopBar(subtitle: 'Home ✦ Ask'),
+                          TopBar(
+                            breadcrumb: Breadcrumb(const [
+                              'Home',
+                              'Ask',
+                            ], onTapFirst: () => goHome(context)),
+                          ),
                           Center(
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 1040),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../shell/top_bar.dart';
 
 import '../../app/config.dart';
 import '../../catalog/actions.dart';
@@ -119,7 +120,7 @@ class _ResearchViewState extends State<_ResearchView> {
           top: 12,
           gap: AmrSpace.x16,
           children: [
-            const Breadcrumb(['Home', 'Explore']),
+            Breadcrumb(['Home', 'Explore'], onTapFirst: () => goHome(context)),
             Text('Explore the data', style: AmrText.sora(40, em: -0.035, height: 1.02)),
             const FiltersSummary(),
             ...pills,
@@ -142,7 +143,7 @@ class _ResearchViewState extends State<_ResearchView> {
             runSpacing: 20,
             children: [
               ColumnGap([
-                const Breadcrumb(['Home', 'Explore']),
+                Breadcrumb(['Home', 'Explore'], onTapFirst: () => goHome(context)),
                 Text('Explore the data', style: AmrText.display(context, max: 80)),
               ], gap: AmrSpace.x18),
               Wrap(

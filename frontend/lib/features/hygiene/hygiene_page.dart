@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../shell/top_bar.dart';
 
 import '../../catalog/actions.dart';
 import '../../catalog/widgets/cross_ward_warning.dart';
@@ -113,7 +114,7 @@ class _Header extends StatelessWidget {
       runSpacing: 24,
       children: [
         ColumnGap([
-          const Breadcrumb(['Home', 'Whole hospital']),
+          Breadcrumb(['Home', 'Whole hospital'], onTapFirst: () => goHome(context)),
           Text('What is spreading', style: AmrText.display(context, max: 80)),
         ], gap: AmrSpace.x18),
         SizedBox(

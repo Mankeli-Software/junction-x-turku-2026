@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../shell/top_bar.dart';
 
 import '../../catalog/actions.dart';
 import '../../catalog/widgets/alert_card.dart';
@@ -86,7 +87,7 @@ class _DesktopLab extends StatelessWidget {
                 return ColumnGap(
                   [
                     ColumnGap([
-                      const Breadcrumb(['Home', 'Alerts']),
+                      Breadcrumb(['Home', 'Alerts'], onTapFirst: () => goHome(context)),
                       Text(_needALook(todo), style: AmrText.display(context, max: 80)),
                       Wrap(
                         spacing: 10,

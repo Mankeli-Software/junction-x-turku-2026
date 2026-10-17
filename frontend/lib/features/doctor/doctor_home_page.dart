@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../shell/top_bar.dart';
 
 import '../../catalog/actions.dart';
 import '../../catalog/catalog.dart';
@@ -126,7 +127,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = ColumnGap([
-      Breadcrumb(['Home', ward?.label ?? 'All wards']),
+      Breadcrumb(['Home', ward?.label ?? 'All wards'], onTapFirst: () => goHome(context)),
       Text('Who is your patient?', style: AmrText.display(context)),
     ], gap: context.vfit(22, min: 10));
     const hint = 'e.g. woman over 75, urinary infection, on the ward for 3 days';
