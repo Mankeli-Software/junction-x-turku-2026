@@ -1,5 +1,5 @@
 name: amiright
-description: "A new Flutter project."
+description: "AM Right: local antimicrobial susceptibility coverage, web app."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -30,11 +30,21 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.6.0
+  flutter_bloc: ^9.1.1
+  go_router: ^18.1.0
+  google_fonts: ^9.0.0
+  lucide_icons_flutter: ^4.0.0
+  equatable: ^3.0.0
+  shared_preferences: ^2.5.6
+  intl: ^0.20.3
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:
@@ -57,6 +67,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/fixtures/
+    # Sora and Inter, the design's two typefaces, bundled so text never renders in a fallback
+    # font; google_fonts finds them here by file name (OFL licences alongside).
+    - assets/google_fonts/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

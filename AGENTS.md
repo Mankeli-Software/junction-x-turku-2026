@@ -31,7 +31,7 @@ Rules that every number must follow:
   - `fixtures/` — canned responses that keep the contract stable while real implementations land.
   - `db.py` — tiny psycopg connection and `ping()`. `schema.sql` — Postgres schema.
   - `config.py` — settings from env / `backend/.env`; the dataset ships in the deploy zip; `WARM_UP` (default true) computes the alert signals in a background thread at startup (about 12 s on a laptop).
-- `frontend/` — Flutter web app (`lib/main.dart`, fixture in `test/coverage_fixture.json`). `API_BASE` is passed with `--dart-define`.
+- `frontend/` — Flutter web app (flutter_bloc, go_router); structure and rules in [frontend/README.md](frontend/README.md). `lib/ds/` is the design system with the exact tokens from the design canvas (Sora + Inter bundled in `assets/google_fonts`). `lib/core/` holds the transport (HTTP or `assets/fixtures`), typed models mirroring `backend/app/models`, the cached `AmrRepository` and `QueryView`. `lib/session/` holds the demo users and the replay `as_of`. `lib/catalog/` holds the widgets placed by name + params: same names as `widgets/catalog.py`, and a GenUI `CatalogItem` wraps each entry. `lib/features/` holds the screens (login, doctor, hygiene, lab, research, chat, dashboard, components). `--dart-define=API_BASE=...` or `--dart-define=FIXTURES=true`.
 - `infra/` — Bicep (Key Vault, Postgres, App Service, Static Web App, monitoring). `scripts/` — deploy, OIDC bootstrap, Anthropic key, DB helpers. `.github/workflows/` — backend, frontend, infra what-if.
 
 ## Status
@@ -40,7 +40,9 @@ Real (computed from the data): data layer (#5), `GET /v1/susceptibility` and `/v
 
 Still fixtures behind the final contracts: `/v1/spreading`, `/v1/ward-links` (#10).
 
-Not started: chat agent on the Claude API (#12), MCP server (#13), Flutter shell with replay slider and roles (#14), doctor/surveillance widgets (#15, #16), chat UI (#17), personal dashboard (#18). The app still reads the CSVs; Postgres holds a copy of the dataset (`backend/schema.sql`, loaded by `scripts/load_data.py --dsn ...`, idempotent) plus app tables such as `user_dashboards`. `/healthz` returns 503 unless the database answers (`backend/app/db.py`).
+Flutter app (#14–#18 UI side): every screen and component in the design canvas, desktop and phone. Demo login with roles, replay slider, typed API client and fixture mode, the doctor flow (patient form → answer page), infection control (`/hygiene`, care workers see their wards first), lab inbox and investigation (`/lab`, `/lab/alerts/:id`), research Explore with chart, table, CSV export and API link (`/research`), chat (`/chat?q=`), pinned widgets on `/v1/dashboard`, and a live component gallery (`/components`). The 17 catalog widgets match `widgets/catalog.py`. Every "Ask" field opens the chat. The chat runs on a rule-based `ScriptedAgent` (`frontend/lib/features/chat/agent/`) that places the same catalog widgets; the Claude agent (#12) replaces it behind the `ChatAgent` interface. "In short" shows a placeholder until the agent writes it. Patient history reads a fixture (no endpoint yet); "Mark as reviewed" and "Send heads-up" are local only (no backend endpoints).
+
+Not started: chat agent on the Claude API (#12), MCP server (#13). The app still reads the CSVs; Postgres holds a copy of the dataset (`backend/schema.sql`, loaded by `scripts/load_data.py --dsn ...`, idempotent) plus app tables such as `user_dashboards`. `/healthz` returns 503 unless the database answers (`backend/app/db.py`).
 
 When you replace a fixture with a real implementation, keep the input/output models unchanged (the frontend codes against them), drop the `fx.` call from the handler, and add tests.
 
@@ -55,8 +57,9 @@ cp backend/.env.example backend/.env             # leave ANTHROPIC_API_KEY empty
 uvicorn app.main:app --reload --app-dir backend  # API on :8000, docs at /docs
 .venv/bin/python scripts/evaluate_alerts.py --quick   # weeks-to-detect and false alarms per ward-year for every alert rule (--out FILE writes markdown)
 docker compose up -d db                          # optional local Postgres
-cd frontend && flutter pub get && flutter test
-flutter run -d chrome --dart-define=API_BASE=http://localhost:8000
+cd frontend && flutter pub get && flutter analyze && flutter test
+flutter run -d chrome --web-port 8080 --dart-define=API_BASE=http://localhost:8000  # CORS allows :8080
+flutter run -d chrome --dart-define=FIXTURES=true                                   # no backend needed
 ```
 
 ## Conventions

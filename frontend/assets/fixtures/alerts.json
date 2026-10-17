@@ -1,0 +1,1 @@
+{"as_of":"2026-09-27","alerts":[{"alert_id":"A-ICU-MRSA-1","type":"statistical","severity":"high","status":"active","ward":"ICU","organism":"Staphylococcus aureus","phenotype":"MRSA","drugs":["FOX","CLI"],"first_seen":"2026-09-13","as_of":"2026-09-27","n_cases":13,"summary":"MRSA share on ICU is 13 of 20 first isolates, far above the hospital rate.","verdict":"likely_real"}]}
