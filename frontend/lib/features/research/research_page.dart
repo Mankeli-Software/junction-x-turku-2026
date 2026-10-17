@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../shell/top_bar.dart';
 
-import '../../app/config.dart';
 import '../../catalog/actions.dart';
 import '../../catalog/widgets/export_ready.dart';
 import '../../catalog/widgets/resistance_trend.dart';
@@ -81,17 +79,6 @@ class _ResearchViewState extends State<_ResearchView> {
     }
   }
 
-  void _copyApiLink() {
-    final query = ResearchQuery(_filters, asOf: _asOf).toQuery();
-    final uri = Uri.parse('${AppConfig.apiBase}/v1/susceptibility').replace(
-      queryParameters: {
-        for (final e in query.entries) e.key: e.value is List ? e.value : '${e.value}',
-      },
-    );
-    Clipboard.setData(ClipboardData(text: uri.toString()));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('API link copied')));
-  }
-
   void _editPrompt() {
     final target = _promptKey.currentContext;
     if (target != null) {
@@ -152,7 +139,6 @@ class _ResearchViewState extends State<_ResearchView> {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  AmrButton(label: 'Copy API link', onPressed: _copyApiLink),
                   AmrButton(label: 'Save view', onPressed: _pin),
                   AmrButton(
                     label: 'Export CSV',
