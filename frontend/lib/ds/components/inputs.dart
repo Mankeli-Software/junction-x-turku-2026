@@ -57,6 +57,7 @@ class _AskFieldState extends State<AskField> {
   }
 
   void _submit() {
+    if (!widget.enabled) return;
     final text = _controller.text.trim();
     if (text.isEmpty) {
       widget.onTap?.call();
@@ -93,9 +94,10 @@ class _AskFieldState extends State<AskField> {
               child: SizedBox(
                 height: fieldHeight,
                 child: Center(
+                  // Never disabled: on the web a disabled field's input turns read-only and
+                  // stays so once enabled again. [enabled] only holds back sending.
                   child: TextField(
                     controller: _controller,
-                    enabled: widget.enabled,
                     readOnly: widget.onTap != null,
                     onTap: widget.onTap,
                     mouseCursor: widget.onTap != null ? SystemMouseCursors.text : null,

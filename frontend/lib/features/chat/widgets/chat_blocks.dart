@@ -333,10 +333,12 @@ class _ComposerState extends State<Composer> {
                   child: SizedBox(
                     height: field,
                     child: Center(
+                      // Never disabled: on the web a disabled field's input turns read-only and
+                      // stays read-only once enabled again, so nothing could be typed after an
+                      // answer. While an answer builds, typing works and sending waits.
                       child: TextField(
                         controller: _controller,
                         focusNode: _focus,
-                        enabled: widget.enabled,
                         onSubmitted: (_) {
                           _send();
                           _focus.requestFocus();
