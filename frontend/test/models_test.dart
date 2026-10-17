@@ -21,7 +21,10 @@ void main() {
     expect(OrganismMix.fromJson(fixture('organisms')).organisms, isNotEmpty);
     expect(Susceptibility.fromJson(fixture('susceptibility')).recent.rows, isNotEmpty);
     expect(Series.fromJson(fixture('susceptibility_series')).series, isNotEmpty);
-    expect(Alerts.fromJson(fixture('alerts')).alerts.single.verdict, Verdict.likelyReal);
+    final alerts = Alerts.fromJson(fixture('alerts')).alerts;
+    expect(alerts, isNotEmpty);
+    // A hospital-wide trend alert has no ward.
+    expect(alerts.where((a) => a.type == AlertType.trend).first.ward, isNull);
     expect(AlertDetail.fromJson(fixture('alerts_detail')).epiCurve, isNotEmpty);
     expect(Spreading.fromJson(fixture('spreading')).rows, isNotEmpty);
     expect(WardLinks.fromJson(fixture('ward_links')).links, isNotEmpty);

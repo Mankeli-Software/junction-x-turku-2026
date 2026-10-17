@@ -45,20 +45,21 @@ String _comparisonText(AlertDetail d) {
   final rates = d.wardComparison.entries.toList()..sort((x, y) => y.value.compareTo(x.value));
   if (rates.isEmpty) return 'No other wards to compare with yet.';
   final what = a.phenotype != null ? '${a.phenotype!.code} share' : 'Case rate';
-  final own = d.wardComparison[a.ward.code];
-  final next = rates.where((e) => e.key != a.ward.code).firstOrNull;
+  final own = d.wardComparison[a.ward?.code];
+  final next = rates.where((e) => e.key != a.ward?.code).firstOrNull;
   String name(String code) => byCodeOrNull(Ward.values, code)?.label ?? code;
   if (own == null) {
     return '$what is highest on ${name(rates.first.key)}: ${pct(rates.first.value)}.';
   }
-  if (next == null) return '$what on ${a.ward.label}: ${pct(own)}.';
-  return '$what on ${a.ward.label}: ${pct(own)}. Next highest, ${name(next.key)}: '
-      '${pct(next.value)}.';
+  if (next == null) return '$what ${a.onWhere}: ${pct(own)}.';
+  // "Next highest" only when it is lower; otherwise the other ward is the highest.
+  final rank = next.value > own ? 'Highest' : 'Next highest';
+  return '$what ${a.onWhere}: ${pct(own)}. $rank, ${name(next.key)}: ${pct(next.value)}.';
 }
 
 /// The highest ward other than the alert's own, for "Compare with Surgery".
 Ward? _compareWard(AlertDetail d) {
-  final rates = d.wardComparison.entries.where((e) => e.key != d.alert.ward.code).toList()
+  final rates = d.wardComparison.entries.where((e) => e.key != d.alert.ward?.code).toList()
     ..sort((x, y) => y.value.compareTo(x.value));
   return rates.isEmpty ? null : byCodeOrNull(Ward.values, rates.first.key);
 }
@@ -109,7 +110,7 @@ class _InvestigationState extends State<_Investigation> {
         ? ColumnGap([
             Text(alertMeta(a, longDate: true), style: AmrText.body(13)),
             Text(
-              '${alertHeadline(a)} on ${a.ward.label}',
+              '${alertHeadline(a)} ${a.onWhere}',
               style: AmrText.sora(32, em: -0.03, height: 1.1),
             ),
             VerdictTag(alert: a, size: VerdictTagSize.large),
@@ -123,7 +124,7 @@ class _InvestigationState extends State<_Investigation> {
               ColumnGap([
                 Text(alertMeta(a, longDate: true), style: AmrText.body(14)),
                 Text(
-                  '${alertHeadline(a)} on ${a.ward.label}',
+                  '${alertHeadline(a)} ${a.onWhere}',
                   style: AmrText.sora(fluid(context, 28, 3, 40), em: -0.03, height: 1.1),
                 ),
               ], gap: AmrSpace.x8),
@@ -134,7 +135,8 @@ class _InvestigationState extends State<_Investigation> {
     final reasons = [
       _Reason(title: 'Is it just more testing?', body: _testingText(d), compact: compact),
       _Reason(title: 'Compared with the hospital', body: _comparisonText(d), compact: compact),
-      _LinkedWardsReason(ward: a.ward, compact: compact),
+      // A hospital-wide alert has no ward to trace patient moves from.
+      if (a.ward != null) _LinkedWardsReason(ward: a.ward!, compact: compact),
     ];
 
     final actions = [
@@ -338,7 +340,7 @@ class _WardComparison extends StatelessWidget {
                 Expanded(
                   child: ShareBar(
                     value: top <= 0 ? 0 : e.value / top,
-                    color: e.key == a.ward.code ? AmrColors.magenta : AmrColors.ink,
+                    color: e.key == a.ward?.code ? AmrColors.magenta : AmrColors.ink,
                   ),
                 ),
                 const SizedBox(width: 12),

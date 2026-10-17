@@ -60,15 +60,15 @@ class AlertBannerView extends StatelessWidget {
     final title = alert.title.isEmpty
         ? alert.summary
         : switch (alert.type) {
-            AlertType.sentinel => '${alert.title} found on ${alert.ward.label}',
+            AlertType.sentinel => '${alert.title} found ${alert.onWhere}',
             AlertType.missingData => alert.summary,
-            _ => '${alert.title} is rising on ${alert.ward.label}',
+            _ => '${alert.title} is rising ${alert.onWhere}',
           };
     return AmrCard(
       tone: AmrCardTone.alert,
       onTap: () => context.read<CatalogActions>().openAlert(alert.alertId),
       child: ColumnGap([
-        DotLabel(home ? 'On your ward now' : 'Active alert on ${alert.ward.label}'),
+        DotLabel(home ? 'On your ward now' : 'Active alert ${alert.onWhere}'),
         Text(home ? title : alert.summary, style: AmrText.title(home ? 26 : 24)),
         Text(
           home ? 'See what it means for your patients' : 'Open the alert',
@@ -95,7 +95,7 @@ class AlertBannerView extends StatelessWidget {
             ],
           ),
           Text(
-            alert.title.isEmpty ? alert.summary : '${alert.title} rising on ${alert.ward.label}',
+            alert.title.isEmpty ? alert.summary : '${alert.title} rising ${alert.onWhere}',
             style: AmrText.body(compact ? 15 : 16, weight: FontWeight.w500),
           ),
           if (!compact)

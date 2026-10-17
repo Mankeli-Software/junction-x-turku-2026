@@ -39,12 +39,12 @@ class Alert extends Equatable {
     required this.type,
     required this.severity,
     required this.status,
-    required this.ward,
     required this.firstSeen,
     required this.asOf,
     required this.nCases,
     required this.summary,
     required this.verdict,
+    this.ward,
     this.organism,
     this.phenotype,
     this.drugs = const [],
@@ -55,7 +55,7 @@ class Alert extends Equatable {
     type: byCode(AlertType.values, j['type']! as String),
     severity: byCode(Severity.values, j['severity']! as String),
     status: byCode(AlertStatus.values, j['status']! as String),
-    ward: byCode(Ward.values, j['ward']! as String),
+    ward: byCodeOrNull(Ward.values, j['ward']),
     organism: byCodeOrNull(Organism.values, j['organism']),
     phenotype: byCodeOrNull(Phenotype.values, j['phenotype']),
     drugs: [for (final d in j['drugs'] as List? ?? const []) byCode(Drug.values, d as String)],
@@ -70,7 +70,9 @@ class Alert extends Equatable {
   final AlertType type;
   final Severity severity;
   final AlertStatus status;
-  final Ward ward;
+
+  /// Null for a hospital-wide alert (a trend).
+  final Ward? ward;
   final Organism? organism;
   final Phenotype? phenotype;
 
@@ -87,6 +89,12 @@ class Alert extends Equatable {
     if (organism != null) organism!.short,
     if (phenotype != null) (organism != null ? 'with ${phenotype!.code}' : phenotype!.code),
   ].join(' ');
+
+  /// "Urology", or "Whole hospital" for a hospital-wide alert.
+  String get where => ward?.label ?? 'Whole hospital';
+
+  /// "on Urology", or "across the hospital" for a hospital-wide alert.
+  String get onWhere => ward == null ? 'across the hospital' : 'on ${ward!.label}';
 
   @override
   List<Object?> get props => [alertId, type, severity, status, ward, asOf, nCases, verdict];

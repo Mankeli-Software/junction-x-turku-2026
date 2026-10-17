@@ -267,13 +267,13 @@ class ScriptedAgent implements ChatAgent {
         WidgetPart(WidgetPlacement(widget: 'CaseList', params: id))
       else ...[
         WidgetPart(WidgetPlacement(widget: 'EpiCurve', params: id)),
-        WidgetPart(WidgetPlacement(widget: 'SamplingVolume', params: {'ward': alert.ward.code})),
+        WidgetPart(WidgetPlacement(widget: 'SamplingVolume', params: {'ward': ?alert.ward?.code})),
         if (alert.organism != null && alert.drugs.isNotEmpty)
           WidgetPart(
             WidgetPlacement(
               widget: 'WindowCompare',
               params: {
-                'ward': alert.ward.code,
+                'ward': ?alert.ward?.code,
                 'organism': alert.organism!.code,
                 'drug': alert.drugs.first.code,
               },

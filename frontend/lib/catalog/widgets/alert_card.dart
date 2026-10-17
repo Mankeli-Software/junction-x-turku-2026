@@ -69,7 +69,7 @@ String caseLine(AlertDetail d) {
 
 /// "Cluster ✦ Urology ✦ since 9 Jun".
 String alertMeta(Alert a, {bool longDate = false}) =>
-    '${alertKind(a)} $sparkle ${a.ward.label} $sparkle since '
+    '${alertKind(a)} $sparkle ${a.where} $sparkle since '
     '${longDate ? day(a.firstSeen) : dayShort(a.firstSeen)}';
 
 // Views ------------------------------------------------------------------------
@@ -226,7 +226,7 @@ class AlertInboxRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${alertKind(alert)} $sparkle ${alert.ward.label}',
+                    '${alertKind(alert)} $sparkle ${alert.where}',
                     style: AmrText.body(compact ? 12 : 13),
                   ),
                   const SizedBox(height: 4),
