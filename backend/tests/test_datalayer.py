@@ -200,3 +200,24 @@ def test_tables_from_postgres_equal_the_csv_tables(monkeypatch):
         pd.testing.assert_frame_equal(
             a.sort_values(key).reset_index(drop=True), b.sort_values(key).reset_index(drop=True), check_dtype=True, obj=name
         )
+
+
+def test_concurrent_first_requests_load_the_dataset_once(monkeypatch):
+    import threading
+    import time
+
+    from app.datalayer import store as store_module
+
+    calls = []
+
+    def slow_load():
+        calls.append(1)
+        time.sleep(0.2)
+        return load_tables(source="csv")
+
+    monkeypatch.setattr(store_module, "_store", None)
+    monkeypatch.setattr(store_module, "load_tables", slow_load)
+    threads = [threading.Thread(target=store_module.get_store) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(calls) == 1

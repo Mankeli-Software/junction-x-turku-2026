@@ -207,12 +207,17 @@ class DataStore:
 
 
 _store: DataStore | None = None
+_store_lock = threading.Lock()
 
 
 def get_store() -> DataStore:
+    """The one store of this process. Requests that arrive while it loads wait for that load,
+    instead of each reading the whole dataset again."""
     global _store
     if _store is None:
-        started = time.perf_counter()
-        _store = DataStore(load_tables())
-        log.info("dataset loaded from %s in %.1f s", settings.data_source, time.perf_counter() - started)
+        with _store_lock:
+            if _store is None:
+                started = time.perf_counter()
+                _store = DataStore(load_tables())
+                log.info("dataset loaded from %s in %.1f s", settings.data_source, time.perf_counter() - started)
     return _store
