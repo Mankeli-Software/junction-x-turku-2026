@@ -14,7 +14,7 @@ PURPOSE = {
     "AlertBanner": "a one-line notice that an alert is active on the ward",
     "PatientHistory": "an earlier patient's isolates (only when a patient_id is given)",
     "SpreadingCounts": "MRSA, ESBL, VRE and CPE counts per ward against normal (hygiene and care staff)",
-    "CrossWardWarning": "linked wards that should be warned about a resistant organism",
+    "CrossWardWarning": "linked wards that should be warned about a resistant organism, each with a heads-up button the user taps (to = only these wards)",
     "WardStatus": "a plain status for the user's own ward (care staff)",
     "AlertCard": "one alert with its verdict (lab)",
     "EpiCurve": "weekly cases of one alert against expected (lab)",
@@ -34,7 +34,11 @@ def _param_summary(name: str) -> str:
         if key == "as_of":
             continue  # set by the server from the replay date
         enum = spec.get("enum") or next((o.get("enum") for o in spec.get("anyOf", []) if o.get("enum")), None)
-        parts.append(f"{key}={'|'.join(map(str, enum))}" if enum else key)
+        items = spec.get("items", {}).get("enum") if spec.get("type") == "array" else None
+        if items:
+            parts.append(f"{key}=[{'|'.join(map(str, items))}, ...]")  # a list of these
+        else:
+            parts.append(f"{key}={'|'.join(map(str, enum))}" if enum else key)
     return ", ".join(parts)
 
 
@@ -64,6 +68,7 @@ A follow-up that changes one thing (allergic to penicillin: CoverageRanking with
 
 Other roles
 - Hygiene and care staff asking what is spreading: SpreadingCounts, and CrossWardWarning for the ward most above normal (find it with get_spreading and get_ward_links). "Is my ward OK": WardStatus.
+- Asked to warn or send a heads-up to a named ward: place CrossWardWarning with ward = the ward where the resistant bacteria are (from the conversation, or get_spreading) and to = [the named ward], so only that ward's heads-up button shows. You never send a heads-up yourself: the user reads the draft and taps send. In in_short say the heads-up is ready to send; never say you cannot send it.
 - Lab users: get_alerts, then AlertCard, EpiCurve, SamplingVolume and CaseList for the alert in question (alert_id from the result).
 - Questions about what a term means: Explain.
 Call only the data tools you need, mostly to decide what to show and to write the in_short line. Place each widget once.

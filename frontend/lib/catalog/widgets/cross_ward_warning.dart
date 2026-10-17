@@ -17,6 +17,11 @@ final crossWardWarningEntry = CatalogEntry(
     query: WardLinksQuery.fromJson(params),
     organism: byCodeOrNull(Organism.values, params['organism']),
     phenotype: byCodeOrNull(Phenotype.values, params['phenotype']),
+    only: [
+      for (final w in params['to'] as List? ?? const [])
+        // A heads-up goes to the other wards, never to the ward it is about.
+        if (byCodeOrNull(Ward.values, w) case final ward? when ward.code != params['ward']) ward,
+    ],
     slot: slot,
   ),
 );
@@ -28,6 +33,7 @@ class CrossWardWarning extends StatelessWidget {
     required this.query,
     this.organism,
     this.phenotype,
+    this.only = const [],
     this.slot = WidgetSlot.page,
   });
 
@@ -36,14 +42,22 @@ class CrossWardWarning extends StatelessWidget {
   /// What is raised on [WardLinksQuery.ward]; it goes into the heads-up text.
   final Organism? organism;
   final Phenotype? phenotype;
+
+  /// The wards the user asked to warn (`to`): only they get a heads-up button.
+  final List<Ward> only;
   final WidgetSlot slot;
 
   @override
   Widget build(BuildContext context) => QueryView<WardLinksQuery, WardLinks>(
     query: query,
     fetch: (repo, q) => repo.wardLinks(q),
-    builder: (context, data) =>
-        LinkedWardsPanel(links: data, organism: organism, phenotype: phenotype, slot: slot),
+    builder: (context, data) => LinkedWardsPanel(
+      links: data,
+      organism: organism,
+      phenotype: phenotype,
+      only: only,
+      slot: slot,
+    ),
   );
 }
 
@@ -135,6 +149,7 @@ class LinkedWardsPanel extends StatelessWidget {
     required this.links,
     this.organism,
     this.phenotype,
+    this.only = const [],
     this.slot = WidgetSlot.page,
     this.sender,
   });
@@ -142,6 +157,9 @@ class LinkedWardsPanel extends StatelessWidget {
   final WardLinks links;
   final Organism? organism;
   final Phenotype? phenotype;
+
+  /// When set, a heads-up for just these wards instead of every linked ward.
+  final List<Ward> only;
   final WidgetSlot slot;
   final HeadsUpSender? sender;
 
@@ -155,6 +173,12 @@ class LinkedWardsPanel extends StatelessWidget {
           void open(Ward to) =>
               cubit.draft(to, headsUpMessage(links.ward, organism: organism, phenotype: phenotype));
           final panel = switch (slot) {
+            _ when only.isNotEmpty => _TargetedPanel(
+              links: links,
+              to: only,
+              onHeadsUp: open,
+              compact: context.isCompact || slot == WidgetSlot.card,
+            ),
             WidgetSlot.page =>
               context.isCompact
                   ? _PhonePanel(links: links, onHeadsUp: open)
@@ -280,6 +304,73 @@ class _PhonePanel extends StatelessWidget {
             ),
         ],
         gap: AmrSpace.x12,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+      ),
+    );
+  }
+}
+
+/// The user named whom to warn: "Give Geriatrics a heads-up" with one button per named ward
+/// (usually one), so there is nothing to look for. The button opens the same draft to check.
+class _TargetedPanel extends StatelessWidget {
+  const _TargetedPanel({
+    required this.links,
+    required this.to,
+    required this.onHeadsUp,
+    this.compact = false,
+  });
+
+  final WardLinks links;
+  final List<Ward> to;
+  final ValueChanged<Ward> onHeadsUp;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final names = to.map((w) => w.label).toList();
+    final who = names.length == 1
+        ? names.single
+        : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+    String why(Ward w) {
+      final link = links.links.where((l) => l.ward == w).firstOrNull;
+      final from = links.ward.label;
+      return [
+        if (link == null)
+          'About resistant bacteria on $from.'
+        else
+          'Shares ${link.sharedPatients30d} patients with $from in 30 days.',
+        if (link?.phenotype case final p?) '${p.code} is also higher on ${w.label}.',
+        'Only totals are shared.',
+      ].join(' ');
+    }
+
+    return AmrCard(
+      tone: AmrCardTone.accent,
+      padding: EdgeInsets.all(compact ? AmrSpace.x18 : AmrSpace.x24),
+      child: ColumnGap(
+        [
+          Text('Give $who a heads-up', style: AmrText.title(compact ? 20 : 22, em: 0)),
+          for (final w in to)
+            Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Text(why(w), style: AmrText.body(14)),
+                ),
+                AmrButton(
+                  label: 'Send heads-up to ${w.label}',
+                  variant: AmrButtonVariant.primary,
+                  size: AmrButtonSize.md,
+                  expand: compact,
+                  onPressed: () => onHeadsUp(w),
+                ),
+              ],
+            ),
+        ],
+        gap: compact ? AmrSpace.x10 : AmrSpace.x14,
         crossAxisAlignment: CrossAxisAlignment.stretch,
       ),
     );

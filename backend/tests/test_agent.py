@@ -512,3 +512,27 @@ def test_without_history_the_user_turn_has_no_history_key():
 def test_a_too_long_history_is_rejected():
     turns = [{"role": "user", "text": "x"}] * 25
     assert client.post("/v1/agent/screen", json={"message": "hi", "history": turns}).status_code == 422
+
+
+def test_a_heads_up_names_other_wards_than_the_one_it_is_about():
+    from app.agent.tools import ToolError, validate_widget
+
+    _, params = validate_widget({"widget": "CrossWardWarning", "params": {"ward": "URO", "to": ["GER"]}}, date(2026, 9, 27))
+    assert params["to"] == ["GER"]
+    with pytest.raises(ToolError, match="to must not include GER"):
+        validate_widget({"widget": "CrossWardWarning", "params": {"ward": "GER", "to": ["GER"]}}, date(2026, 9, 27))
+
+
+def test_a_summary_waits_until_a_refused_widget_is_fixed():
+    bad = {"widget": "CrossWardWarning", "params": {"ward": "GER", "to": ["GER"]}}
+    good = {"widget": "CrossWardWarning", "params": {"ward": "URO", "to": ["GER"]}}
+    fake = FakeClient(lambda _: [
+        FakeTurn([use("render_widget", "w1", **bad), use("in_short", "s1", text="Ready to send.")]),
+        FakeTurn([use("render_widget", "w2", **good), use("in_short", "s2", text="Ready to send.")]),
+    ])
+    events = collect(req("send a heads-up to Geriatrics"), fake)
+    assert [k for k in kinds(events) if k in ("widget", "in_short")] == ["widget", "in_short"]
+    (w,) = [d for e, d in events if e == "widget"]
+    assert w["params"]["ward"] == "URO" and w["params"]["to"] == ["GER"]
+    first_results = json.dumps(fake.calls[1]["messages"][-1])
+    assert "to must not include GER" in first_results and "Not placed" in first_results

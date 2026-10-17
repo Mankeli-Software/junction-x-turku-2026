@@ -7,7 +7,7 @@ parameters only: widgets fetch their numbers from the API, the AI never writes o
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.alerts import (
     AlertDetailQuery,
@@ -18,7 +18,7 @@ from app.models.alerts import (
 )
 from app.models.common import ProfileQuery
 from app.models.data import CoverageQuery, OrganismMixQuery, SeriesQuery, SusceptibilityQuery
-from app.vocab import DEFAULT_AS_OF, Drug, Organism, Phenotype
+from app.vocab import DEFAULT_AS_OF, Drug, Organism, Phenotype, Ward
 
 # Widget-only params: display filters applied in the app to the same numbers, and the fixed
 # notices the AI can pick. None of them carries a number.
@@ -38,6 +38,19 @@ class SpreadingParams(SpreadingQuery):
 class CrossWardParams(WardLinksQuery):
     organism: Organism | None = None
     phenotype: Phenotype | None = None
+    to: list[Ward] = Field(
+        default_factory=list,
+        description="display filter: only these wards get a heads-up button, when the user names whom to warn",
+    )
+
+    @model_validator(mode="after")
+    def _not_to_itself(self) -> "CrossWardParams":
+        if self.ward in self.to:
+            raise ValueError(
+                f"to must not include {self.ward}: ward is where the resistant bacteria are, to is the "
+                "other wards to warn about them"
+            )
+        return self
 
 
 class PatientHistoryParams(BaseModel):

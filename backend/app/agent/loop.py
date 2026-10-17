@@ -115,6 +115,7 @@ async def run(req: AgentRequest, llm: LLMClient) -> AsyncIterator[Event]:
             ui_results: dict[str, tuple[str, bool]] = {}
             data_uses: list[ToolUse] = []
             asked = False
+            refused = False  # a widget in this turn was refused: its summary waits for the fix
             end: TurnEnd | None = None
             try:
                 async for ev in llm.turn(system=SYSTEM_PROMPT, tools=tools, messages=messages):
@@ -137,10 +138,17 @@ async def run(req: AgentRequest, llm: LLMClient) -> AsyncIterator[Event]:
                                 yield "widget", {"widget": widget, "params": params}
                                 ui_results[ev.id] = ("Placed.", False)
                         except ToolError as e:
+                            refused = True
                             ui_results[ev.id] = (str(e), True)
                     elif ev.name == "in_short":
                         try:
                             text = validate_text(ev.input)
+                            if refused:
+                                ui_results[ev.id] = (
+                                    "Not placed: a widget in this turn was refused. Place it again with valid params, then call in_short.",
+                                    True,
+                                )
+                                continue
                             if summary_done:
                                 ui_results[ev.id] = ("The summary is already placed.", False)
                                 continue
