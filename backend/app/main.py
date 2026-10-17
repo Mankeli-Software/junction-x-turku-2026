@@ -1,3 +1,6 @@
+import threading
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,7 +10,19 @@ from app.functions import alerts, dashboard, data  # noqa: F401  (registers func
 from app.registry import REGISTRY, build_router
 from app.widgets.catalog import catalog_schemas
 
-app = FastAPI(title="AMRight API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # The alert signals take about 12 s to compute once; do it in the background at startup.
+    if settings.warm_up:
+        from app.datalayer import alerts as alert_engine
+        from app.datalayer.store import get_store
+
+        threading.Thread(target=lambda: alert_engine.warm_up(get_store()), daemon=True, name="alert-warm-up").start()
+    yield
+
+
+app = FastAPI(title="AMRight API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

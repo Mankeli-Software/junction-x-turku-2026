@@ -27,16 +27,16 @@ Rules that every number must follow:
 - `backend/app/` — FastAPI app (Python 3.12, pandas, scipy, pydantic v2).
   - `registry.py` — **declare each function once** with `@register(name, description, path, input_model, output_model)`; REST routes are generated from it, and the MCP server and the Claude agent tools will read the same registry (one set of functions, three callers). `GET /v1/functions` and `GET /v1/widgets` expose the registry and widget catalog as data.
   - `functions/` — handlers (`data.py`, `alerts.py`, `dashboard.py`). `models/` — request/response pydantic models. `vocab.py` — shared literals (wards, specimens, organisms, WHONET drug codes, age bands, windows, `MIN_ISOLATES`). `widgets/catalog.py` — widget names → parameter schemas; the AI picks widgets and params, it never writes a number.
-  - `datalayer/` — `store.py` (load CSVs, isolate frame, first-isolate rule, `as_of` cut, window dates), `derive.py` (age band, onset, week start), `susceptibility.py` (shrunk estimates, outbreak-inflation flag, weekly series), `coverage.py` (organism mix, WISCA coverage per drug and pair, narrowest effective drug). `volume.py` (weekly culture counts per ward and specimen, seasonal baseline, `get_volume`), `alerts.py` (alert detectors in `DETECTORS`, alert list and detail; add ALERT-2/3 detectors there). `shrinkage.py` — the shrinkage maths.
+  - `datalayer/` — `store.py` (load CSVs, isolate frame, first-isolate rule, `as_of` cut, window dates), `derive.py` (age band, onset, week start), `susceptibility.py` (shrunk estimates, outbreak-inflation flag, weekly series), `coverage.py` (organism mix, WISCA coverage per drug and pair, narrowest effective drug). `volume.py` (weekly culture counts per ward and specimen, seasonal baseline, `get_volume`), `alerts.py` (alert detectors in `DETECTORS`, alert list and detail; add new detectors there), `signals.py` (ward x organism cells clearly above the hospital rate, per day, cached; built on `susceptibility.py`), `trend.py` (monthly Mann-Kendall + Sen slope for slow drift). `shrinkage.py` — the shrinkage maths.
   - `fixtures/` — canned responses that keep the contract stable while real implementations land.
   - `db.py` — tiny psycopg connection and `ping()`. `schema.sql` — Postgres schema.
-  - `config.py` — settings from env / `backend/.env`; the dataset ships in the deploy zip.
+  - `config.py` — settings from env / `backend/.env`; the dataset ships in the deploy zip; `WARM_UP` (default true) computes the alert signals in a background thread at startup (about 12 s on a laptop).
 - `frontend/` — Flutter web app (`lib/main.dart`, fixture in `test/coverage_fixture.json`). `API_BASE` is passed with `--dart-define`.
 - `infra/` — Bicep (Key Vault, Postgres, App Service, Static Web App, monitoring). `scripts/` — deploy, OIDC bootstrap, Anthropic key, DB helpers. `.github/workflows/` — backend, frontend, infra what-if.
 
 ## Status
 
-Real (computed from the data): data layer (#5), `GET /v1/susceptibility` and `/v1/susceptibility/series` with shrinkage (#6), Azure infrastructure and CI (#3), Postgres schema, CSV loader, DB-backed `/healthz` and `/v1/dashboard` (#11), `GET /v1/volume`, `/v1/alerts` and `/v1/alerts/detail` with sentinel (every CPE and VRE isolate) and missing-data alerts (#8). Statistical, trend and cross-ward alerts are not built yet (#9, #10).
+Real (computed from the data): data layer (#5), `GET /v1/susceptibility` and `/v1/susceptibility/series` with shrinkage (#6), Azure infrastructure and CI (#3), Postgres schema, CSV loader, DB-backed `/healthz` and `/v1/dashboard` (#11), `GET /v1/volume`, `/v1/alerts` and `/v1/alerts/detail` with sentinel (every CPE and VRE isolate) and missing-data alerts (#8). Statistical alerts (ESBL/MRSA flags and multi-drug rises above the hospital rate) and the hospital-wide trend alert (#9); `Alert.ward` is `None` for a trend. Cross-ward alerts are not built yet (#10). Rule scores: `docs/alert_evaluation.md`.
 
 Still fixtures behind the final contracts: `/v1/spreading`, `/v1/ward-links` (#10).
 
@@ -53,6 +53,7 @@ python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 ruff check backend && pytest                     # CI runs both
 cp backend/.env.example backend/.env             # leave ANTHROPIC_API_KEY empty: agent route returns 503, rest works
 uvicorn app.main:app --reload --app-dir backend  # API on :8000, docs at /docs
+.venv/bin/python scripts/evaluate_alerts.py --quick   # weeks-to-detect and false alarms per ward-year for every alert rule (--out FILE writes markdown)
 docker compose up -d db                          # optional local Postgres
 cd frontend && flutter pub get && flutter test
 flutter run -d chrome --dart-define=API_BASE=http://localhost:8000

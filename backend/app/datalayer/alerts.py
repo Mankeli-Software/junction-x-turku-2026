@@ -16,11 +16,14 @@ Rules, and why:
 import weakref
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 import pandas as pd
 from scipy.stats import poisson
 
+from app.datalayer import signals as sig
+from app.datalayer import trend as tr
 from app.datalayer.store import DataStore, window_dates
 from app.datalayer.volume import (
     BASELINE_RECENT_WEEKS,
@@ -52,6 +55,11 @@ MAX_CASES = 50
 # phenotype flag column -> (severity, drugs the phenotype implies resistance to)
 SENTINEL = {"CPE": ("cpe", "critical", ["MEM"]), "VRE": ("vre", "high", ["VAN"])}
 SEVERITY_RANK: dict[str, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+EPISODE_GAP_DAYS = 14  # flagged weeks closer than this belong to one alert
+HISTORY_DAYS = 365  # the signal needs a year of history for its hospital rate
+MIN_SOLID_CASES = 5  # drug-only alerts with fewer resistant isolates are labelled too few
+LOW_VOLUME_RATIO = 0.6  # ward sent under 60% of its usual cultures: the sample may be selective
 
 
 class UnknownAlert(KeyError):
@@ -151,7 +159,222 @@ def missing_data_alerts(store: DataStore, as_of: date) -> list[Alert]:
     return out
 
 
-DETECTORS: list[Callable[[DataStore, date], list[Alert]]] = [sentinel_alerts, missing_data_alerts]
+
+# ---- statistical (one alert per ward x organism episode) ---------------------------------------
+
+
+def _slug(organism: str) -> str:
+    return organism.lower().replace(" ", "-")
+
+
+def _monday(d: date) -> date:
+    return week_start(d)
+
+
+def _first_eval_day(store: DataStore) -> date:
+    return store.tables.cultures["sample_date"].min().date() + timedelta(days=HISTORY_DAYS)
+
+
+def warm_up(store: DataStore) -> None:
+    """Compute every weekly signal once (about 12 s) so no request pays for it. Run in a thread."""
+    sig.warm_up(store, _first_eval_day(store), store.tables.cultures["sample_date"].max().date())
+    tr.trends(store, store.tables.cultures["sample_date"].max().date())
+
+
+def _eval_days(store: DataStore, as_of: date) -> list[date]:
+    """Sundays the signals are judged on, plus as_of itself, over the whole history."""
+    first = _first_eval_day(store)
+    days = []
+    d = as_of - timedelta(days=(as_of.weekday() + 1) % 7)  # latest Sunday on or before as_of
+    while d >= first:
+        days.append(d)
+        d -= WEEK
+    if as_of not in days and as_of >= first:
+        days.append(as_of)
+    return sorted(days)
+
+
+def _cases(store: DataStore, ward: str | None, organism: str, hits: list[sig.Hit], upto: date) -> pd.DataFrame:
+    """Isolates of the organism (on one ward, or everywhere) up to `upto`, with is_case set.
+
+    A case carries the flagged phenotype, or is resistant to one of the flagged drugs.
+    """
+    iso = store.isolates(upto)
+    iso = iso[iso["organism"] == organism]
+    if ward is not None:
+        iso = iso[iso["ward_code"] == ward]
+    hits = lead(hits)
+    pheno = [h.name for h in hits if h.kind == "phenotype"]
+    drugs = [h.name for h in hits if h.kind == "drug"]
+    case = pd.Series(False, index=iso.index)
+    for name in pheno:
+        case |= iso[sig.PHENOTYPE_FLAGS[name]] == 1
+    if drugs:
+        sir = store.sir
+        r_ids = set(sir.loc[(sir["organism"] == organism) & (sir["antibiotic_code"].isin(drugs)) & (sir["result"] == "R"), "isolate_id"])
+        case |= iso["isolate_id"].isin(r_ids)
+    return iso.assign(is_case=case)
+
+
+def _ward_volume_ratio(store: DataStore, ward: str, as_of: date) -> float:
+    """Cultures in the last 4 weeks over the ward's usual 4 weeks (mean of the 52 weeks before)."""
+    c = store.tables.cultures
+    c = c[(c["ward_code"] == ward) & (c["sample_date"] <= pd.Timestamp(as_of))]
+    recent = int((c["sample_date"] > pd.Timestamp(as_of - timedelta(days=28))).sum())
+    before = c[(c["sample_date"] <= pd.Timestamp(as_of - timedelta(days=28))) & (c["sample_date"] > pd.Timestamp(as_of - timedelta(days=28 + 364)))]
+    usual = len(before) / 13 if len(before) else 0  # 52 weeks = 13 four-week periods
+    return recent / usual if usual else 1.0
+
+
+def _stat_verdict(store: DataStore, ward: str, hits: list[sig.Hit], as_of: date) -> tuple[str, str]:
+    """Label from case mix and volume together, never volume alone."""
+    pheno = [h for h in hits if h.kind == "phenotype"]
+    ratio = _ward_volume_ratio(store, ward, as_of)
+    if pheno:
+        h = max(pheno, key=lambda x: x.r)
+        return "likely_real", (
+            f"{h.r} of {h.n} first isolates carry the {h.name} flag against {h.hospital:.1%} hospital-wide. "
+            "The flag comes from the laboratory, so the signal does not depend on how many cultures were sent "
+            f"(cultures on the ward are at {ratio:.0%} of usual)."
+        )
+    r = _top(hits).r
+    if r < MIN_SOLID_CASES:
+        return "too_few_cases", (
+            f"Only {r} resistant first isolates behind the signal; {len(hits)} drugs are above the hospital "
+            "rate but the count is too small to call it an outbreak."
+        )
+    if ratio < LOW_VOLUME_RATIO:
+        return "possible_sampling_artefact", (
+            f"{len(hits)} drugs are above the hospital rate, but the ward sent only {ratio:.0%} of its usual "
+            "cultures, so the sample may be selective (for example only the sickest patients)."
+        )
+    return "likely_real", (
+        f"{len(hits)} drugs are above the hospital rate together ({r} resistant first isolates at most) and "
+        f"ward culture volume is {ratio:.0%} of usual, so the rise is not explained by sampling."
+    )
+
+
+def _onset(store: DataStore, ward: str, organism: str, hits: list[sig.Hit], first_day: date) -> date:
+    """Date of the earliest case in the 4 weeks before the episode was first flagged."""
+    cases = _cases(store, ward, organism, hits, first_day)
+    cases = cases[cases["is_case"] & (cases["sample_date"] > pd.Timestamp(first_day - timedelta(days=sig.WINDOW_DAYS)))]
+    return cases["sample_date"].min().date() if len(cases) else first_day
+
+
+def lead(hits: list[sig.Hit]) -> list[sig.Hit]:
+    """The hits that define the cases: the lab phenotype if one fired, otherwise the drugs."""
+    pheno = [h for h in hits if h.kind == "phenotype"]
+    return pheno or hits
+
+
+def _top(hits: list[sig.Hit]) -> sig.Hit:
+    return max(lead(hits), key=lambda h: (h.r, h.n))
+
+
+@dataclass(frozen=True)
+class Episode:
+    """A run of flagged weeks for one ward x organism."""
+
+    ward: str
+    organism: str
+    first_day: date  # first flagged evaluation
+    last_day: date  # last flagged evaluation
+    peak_day: date  # evaluation with the most cases
+    hits: list[sig.Hit]  # the peak evaluation's hits
+    first_hits: list[sig.Hit]  # the first flagged evaluation's hits (fixed once the episode starts)
+    phenotypes: list[str]
+    drugs: list[str]
+
+    @property
+    def key(self) -> str:
+        return f"stat-{self.ward}-{_slug(self.organism)}-{_monday(self.first_day)}"
+
+
+def _stat_episodes(store: DataStore, as_of: date) -> list[Episode]:
+    flagged: dict[tuple[str, str], list[tuple[date, list[sig.Hit]]]] = {}
+    for day in _eval_days(store, as_of):
+        by: dict[tuple[str, str], list[sig.Hit]] = {}
+        for h in sig.hits_on(store, day):
+            by.setdefault((h.ward, h.organism), []).append(h)
+        for g, hs in by.items():
+            flagged.setdefault(g, []).append((day, hs))
+
+    out = []
+    for (ward, organism), items in flagged.items():
+        runs: list[list[tuple[date, list[sig.Hit]]]] = []
+        for it in items:
+            if runs and (it[0] - runs[-1][-1][0]).days <= EPISODE_GAP_DAYS:
+                runs[-1].append(it)
+            else:
+                runs.append([it])
+        for run in runs:
+            peak_day, hits = max(run, key=lambda it: (_top(it[1]).r, it[0]))  # the worst 4 weeks
+            out.append(
+                Episode(
+                    ward, organism, run[0][0], run[-1][0], peak_day, hits, run[0][1],
+                    sorted({h.name for _, hs in run for h in hs if h.kind == "phenotype"}),
+                    sorted({h.name for _, hs in run for h in hs if h.kind == "drug"}),
+                )
+            )
+    return out
+
+
+def statistical_alerts(store: DataStore, as_of: date) -> list[Alert]:
+    out = []
+    for ep in _stat_episodes(store, as_of):
+        top = _top(ep.hits)
+        r, n = top.r, top.n
+        what = f"{ep.phenotypes[0]} {ep.organism}" if ep.phenotypes else f"{ep.organism} resistance ({', '.join(ep.drugs)})"
+        verdict, _ = _stat_verdict(store, ep.ward, ep.hits, ep.peak_day)
+        out.append(
+            Alert(
+                alert_id=ep.key,
+                type="statistical",
+                severity="high" if ep.phenotypes else "medium",
+                status="active" if ep.last_day == as_of else "resolved",
+                ward=ep.ward,
+                organism=ep.organism,
+                phenotype=ep.phenotypes[0] if ep.phenotypes else None,
+                drugs=ep.drugs,
+                first_seen=_onset(store, ep.ward, ep.organism, ep.first_hits, ep.first_day),
+                as_of=as_of,
+                n_cases=r,
+                summary=(
+                    f"{what} on {ep.ward}: {r} of {n} first isolates in the 4 weeks to {ep.peak_day} (the peak), "
+                    f"against {top.hospital:.1%} hospital-wide over 12 months."
+                ),
+                verdict=verdict,
+            )
+        )
+    return out
+
+
+def trend_alerts(store: DataStore, as_of: date) -> list[Alert]:
+    out = []
+    for t in tr.trends(store, as_of):
+        out.append(
+            Alert(
+                alert_id=f"trend-{_slug(t.organism)}-{t.drug}",
+                type="trend",
+                severity="medium",
+                status="active",
+                ward=None,
+                organism=t.organism,
+                drugs=[t.drug],
+                first_seen=t.detected_on,
+                as_of=as_of,
+                n_cases=t.resistant_last_12m,
+                summary=(
+                    f"{t.organism} {t.drug} resistance is rising {t.slope:.1f} points a year "
+                    f"({t.first_rate:.1%} to {t.last_rate:.1%} over {t.months} months, hospital-wide)."
+                ),
+                verdict="likely_real",
+            )
+        )
+    return out
+
+
+DETECTORS: list[Callable[[DataStore, date], list[Alert]]] = [sentinel_alerts, missing_data_alerts, statistical_alerts, trend_alerts]
 
 _cache: "weakref.WeakKeyDictionary[DataStore, OrderedDict[date, list[Alert]]]" = weakref.WeakKeyDictionary()
 CACHE_SIZE = 64
@@ -176,8 +399,8 @@ def list_alerts(store: DataStore, q: AlertsQuery) -> AlertsOut:
     keep = [
         a
         for a in compute_alerts(store, q.as_of)
-        if start <= a.first_seen <= end
-        and (not q.ward or a.ward == q.ward)
+        if a.first_seen <= end and (a.first_seen >= start or a.status == "active")  # still-active alerts always show
+        and (not q.ward or a.ward in (q.ward, None))  # hospital-wide alerts concern every ward
         and (not q.severity or a.severity == q.severity)
         and (not q.status or a.status == q.status)
     ]
@@ -208,6 +431,10 @@ def alert_detail(store: DataStore, alert_id: str, as_of: date) -> AlertDetailOut
         raise UnknownAlert(alert_id)
     if alert.type == "sentinel":
         return _sentinel_detail(store, alert, as_of)
+    if alert.type == "statistical":
+        return _stat_detail(store, alert, as_of)
+    if alert.type == "trend":
+        return _trend_detail(store, alert, as_of)
     return _missing_detail(store, alert, as_of)
 
 
@@ -298,5 +525,75 @@ def _missing_detail(store: DataStore, alert: Alert, as_of: date) -> AlertDetailO
             "No clinical signal: the ward stopped sending cultures, so any resistance figure for it is "
             f"missing, not good. {scope} ward_comparison is cultures received divided by cultures expected, "
             "per ward, for the first missing week."
+        ),
+    )
+
+
+def _stat_detail(store: DataStore, alert: Alert, as_of: date) -> AlertDetailOut:
+    ep = next(e for e in _stat_episodes(store, as_of) if e.key == alert.alert_id)
+    hits, peak_day = ep.hits, ep.peak_day
+    weeks = _weeks_around(alert.first_seen, as_of)
+    ward_cases = _cases(store, alert.ward, alert.organism, hits, as_of)
+    all_cases = _cases(store, None, alert.organism, hits, as_of)
+    w0 = pd.Timestamp(weeks[0])
+
+    # Expected = the hospital rate before the window, applied to the ward's own isolates that week.
+    before = all_cases[(all_cases["sample_date"] < w0) & (all_cases["sample_date"] >= w0 - pd.Timedelta(days=364))]
+    hospital_rate = float(before["is_case"].mean()) if len(before) else 0.0
+    by_week = ward_cases.groupby(ward_cases["sample_date"].dt.date.map(week_start))
+    cases_w, isolates_w = by_week["is_case"].sum(), by_week.size()
+    epi = [EpiPoint(week_start=w, cases=int(cases_w.get(w, 0)), expected=round(hospital_rate * int(isolates_w.get(w, 0)), 2)) for w in weeks]
+
+    shown = ward_cases[ward_cases["is_case"] & (ward_cases["sample_date"] >= w0)].sort_values("sample_date", ascending=False)
+    cases = [
+        CaseRow(sample_date=r.sample_date.date(), ward=r.ward_code, specimen=r.specimen, organism=r.organism, phenotype=alert.phenotype)
+        for r in shown.head(MAX_CASES).itertuples()
+    ]
+    volume = [VolumePoint(week_start=w, cultures=n) for w, n in zip(weeks, _weekly_cultures(store, alert.ward, weeks, as_of))]
+
+    recent = all_cases[all_cases["sample_date"] > pd.Timestamp(as_of - timedelta(days=sig.WINDOW_DAYS))]
+    share = recent.groupby("ward_code")["is_case"].agg(["sum", "size"])
+    comparison = {w: round(float(row["sum"] / row["size"]), 3) for w, row in share.iterrows() if row["size"] >= 1}
+    _, reason = _stat_verdict(store, alert.ward, hits, peak_day) if hits else (alert.verdict, alert.summary)
+    return AlertDetailOut(
+        alert=alert,
+        epi_curve=epi,
+        cases=cases,
+        volume=volume,
+        ward_comparison=comparison,
+        verdict_reason=(
+            f"{reason} Epi curve: cases per week against what the hospital rate would give for this ward's "
+            "isolates. ward_comparison is the share of the organism's first isolates that are cases, per ward, "
+            "over the last 4 weeks."
+        ),
+    )
+
+
+def _trend_detail(store: DataStore, alert: Alert, as_of: date) -> AlertDetailOut:
+    key = (alert.organism, alert.drugs[0])
+    t = next(x for x in tr.trends(store, as_of) if (x.organism, x.drug) == key)
+    series = tr._monthly(store).series[key]
+    last = tr._last_complete_month(as_of)
+    w = series[series.index <= last].tail(tr.MAX_MONTHS)
+    epi = [EpiPoint(week_start=m.start_time.date(), cases=int(row["r"]), expected=round(float(row["n"]) * t.first_rate, 1)) for m, row in w.iterrows()]
+    volume = [VolumePoint(week_start=m.start_time.date(), cultures=int(row["n"])) for m, row in w.iterrows()]
+
+    firsts = store.first_isolates(as_of, "365d")
+    sir = store.susceptibility(firsts[firsts["organism"] == alert.organism])
+    sir = sir[sir["antibiotic_code"] == key[1]].merge(firsts[["isolate_id", "ward_code"]], on="isolate_id")
+    by_ward = sir.groupby("ward_code")["result"].agg(lambda v: float((v == "R").mean()))
+    return AlertDetailOut(
+        alert=alert,
+        epi_curve=epi,
+        cases=[],
+        volume=volume,
+        ward_comparison={ward: round(rate, 3) for ward, rate in by_ward.items()},
+        verdict_reason=(
+            f"Mann-Kendall test on {t.months} monthly rates: tau {t.tau:.2f}, p {t.p:.1e}, Sen slope {t.slope:+.1f} points "
+            f"a year, from {t.first_rate:.1%} (first 6 months) to {t.last_rate:.1%} (last 6). Tested hospital-wide with "
+            f"about {int(w['n'].median())} first isolates a month, so it does not depend on sampling volume or on one outbreak month. "
+            "One point per calendar month: week_start is the first day of the month, cases are resistant first isolates, "
+            "expected is the same month at the starting rate and volume is first isolates tested. "
+            "ward_comparison is the resistance rate per ward over the last 12 months."
         ),
     )

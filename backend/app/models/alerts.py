@@ -23,7 +23,7 @@ class Alert(BaseModel):
     type: AlertType
     severity: Severity
     status: AlertStatus
-    ward: Ward
+    ward: Ward | None = Field(None, description="None for a hospital-wide alert (a trend)")
     organism: Organism | None = None
     phenotype: Phenotype | None = None
     drugs: list[Drug] = Field(default_factory=list, description="one outbreak groups its drugs")

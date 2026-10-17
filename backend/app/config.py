@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     api_key: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:8080"
     as_of_default: date = date(2026, 9, 27)
+    warm_up: bool = True  # compute the alert signals in the background at startup
     data_dir: str = _default_data_dir()
 
     @property
