@@ -60,8 +60,8 @@ class DoctorHomePage extends StatelessWidget {
   }
 }
 
-/// "Ask AMRight": the AI's own card, with its ask field and a row of questions. The first two
-/// open an answer straight away (no AI needed), the rest go to the chat.
+/// "Ask AMRight": the AI's own card, with its ask field and a row of questions, each asked in
+/// the chat.
 class _AskCard extends StatelessWidget {
   const _AskCard({required this.ward});
 
@@ -70,11 +70,14 @@ class _AskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = context.read<CatalogActions>();
+    // Every question goes to the chat; the first two take their patient along, so the AI answers
+    // straight away instead of asking for the infection or the onset.
     final presets = <(String, VoidCallback)>[
       (
         'UTI, hospital onset, 75+',
-        () => actions.openAnswer(
-          PatientProfile(
+        () => actions.ask(
+          'A patient aged 75 or over with a UTI that started in hospital',
+          patient: PatientProfile(
             ward: ward,
             infectionType: InfectionType.uti,
             onset: Onset.hospital,
@@ -84,8 +87,9 @@ class _AskCard extends StatelessWidget {
       ),
       (
         'Sepsis after surgery',
-        () => actions.openAnswer(
-          const PatientProfile(
+        () => actions.ask(
+          'Sepsis after surgery, started in hospital',
+          patient: const PatientProfile(
             ward: Ward.surg,
             infectionType: InfectionType.sepsis,
             onset: Onset.hospital,
