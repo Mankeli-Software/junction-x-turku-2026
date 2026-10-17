@@ -99,9 +99,22 @@ def _stratum(store: DataStore, f: Filters) -> pd.DataFrame:
     return d.rename(columns={"antibiotic_code": "drug"})
 
 
+SMALL_FRAME_ROWS = 4000
+
+
 def _counts(rows: pd.DataFrame, keys: list[str]) -> dict[tuple, Counts]:
     if rows.empty:
         return {}
+    if len(rows) <= SMALL_FRAME_ROWS:
+        # A groupby/unstack costs about a millisecond of fixed pandas overhead; the weekly series
+        # makes hundreds of calls on a few hundred rows, where a plain loop is several times faster.
+        rows = rows.dropna(subset=keys)  # NaN keys are dropped, as groupby does
+        tally: dict[tuple, list[int]] = {}
+        slot = {"S": 0, "I": 1, "R": 2}
+        for *key, result in zip(*(rows[c].to_numpy() for c in (*keys, "result")), strict=True):
+            tally.setdefault(tuple(key), [0, 0, 0])[slot[result]] += 1
+        one = len(keys) == 1  # groupby keys a single column by its value, not a 1-tuple
+        return {(k[0] if one else k): (v[0], v[1], v[2], v[0] + v[1] + v[2]) for k, v in tally.items()}
     c = rows.groupby([*keys, "result"]).size().unstack(fill_value=0).reindex(columns=["S", "I", "R"], fill_value=0)
     s, i, r = c["S"].to_numpy(), c["I"].to_numpy(), c["R"].to_numpy()
     return {k: (int(a), int(b), int(x), int(a + b + x)) for k, a, b, x in zip(c.index, s, i, r)}

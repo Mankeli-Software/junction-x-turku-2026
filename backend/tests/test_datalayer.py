@@ -169,3 +169,19 @@ def test_indexed_filter_matches_a_full_scan():
         for _ in range(2):  # the second call is served from the memo
             got = store.sir_rows(**filters)
             assert got.index.equals(expected.index), filters
+
+
+def test_counts_loop_and_groupby_agree():
+    """_counts has a plain-loop path for small frames; it must match the groupby path exactly."""
+    from app.datalayer import susceptibility as susc
+
+    store = get_store()
+    for keys in (["organism", "antibiotic_code"], ["specimen", "organism", "antibiotic_code", "ward_code"], ["antibiotic_code"]):
+        for rows in (store.sir.iloc[:3000], store.sir[store.sir["organism"] == "Escherichia coli"].iloc[:1500]):
+            small = susc._counts(rows, keys)
+            old, susc.SMALL_FRAME_ROWS = susc.SMALL_FRAME_ROWS, 0
+            try:
+                big = susc._counts(rows, keys)
+            finally:
+                susc.SMALL_FRAME_ROWS = old
+            assert small == big, keys

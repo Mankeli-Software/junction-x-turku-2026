@@ -4,6 +4,8 @@ REST routes are generated from it now. The MCP server and the agent tools read
 the same registry later (name, description, input/output JSON Schema, handler).
 """
 
+import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Literal
@@ -31,6 +33,40 @@ class Function:
 
 REGISTRY: dict[str, Function] = {}
 
+RESULT_CACHE_SIZE = 512
+_results: OrderedDict[tuple[str, str], BaseModel] = OrderedDict()
+_results_lock = threading.Lock()
+
+
+def clear_results() -> None:
+    """Forget every remembered result (tests that swap the data call this)."""
+    with _results_lock:
+        _results.clear()
+
+
+def _remembered(name: str, handler: Callable[[BaseModel], BaseModel]) -> Callable[[BaseModel], BaseModel]:
+    """The data never changes under a request, so one answer per (function, input) is enough.
+
+    The remembered output is shared between callers: treat it as read-only. A handler that
+    raises is not remembered.
+    """
+
+    def run(q: BaseModel) -> BaseModel:
+        key = (name, q.model_dump_json())
+        with _results_lock:
+            if key in _results:
+                _results.move_to_end(key)
+                return _results[key]
+        out = handler(q)
+        with _results_lock:
+            _results[key] = out
+            if len(_results) > RESULT_CACHE_SIZE:
+                _results.popitem(last=False)
+        return out
+
+    run.__wrapped__ = handler  # type: ignore[attr-defined]
+    return run
+
 
 def register(
     name: str,
@@ -39,13 +75,16 @@ def register(
     input_model: type[BaseModel],
     output_model: type[BaseModel],
     method: Literal["GET", "PUT"] = "GET",
+    cache: bool = True,
 ):
-    """Decorator: declare a function once."""
+    """Decorator: declare a function once. Reads of the dataset are remembered; pass cache=False
+    for a function that reads state which changes (the dashboard)."""
 
     def deco(handler: Callable[[BaseModel], BaseModel]):
         if name in REGISTRY:
             raise ValueError(f"duplicate function {name}")
-        REGISTRY[name] = Function(name, description, path, input_model, output_model, handler, method)
+        wrapped = _remembered(name, handler) if cache and method == "GET" else handler
+        REGISTRY[name] = Function(name, description, path, input_model, output_model, wrapped, method)
         return handler
 
     return deco

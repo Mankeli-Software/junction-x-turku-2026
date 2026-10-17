@@ -90,3 +90,15 @@ def test_outbreak_flag_reaches_the_api():
     row = r.json()["annual"]["rows"][0]
     assert row["outbreak_inflated"] and row["note"]
     assert row["rate_without_outbreak"] < row["counts"]["r"] / (row["counts"]["s"] + row["counts"]["r"])
+
+
+def test_dataset_functions_are_remembered_but_the_dashboard_is_not():
+    from app.registry import REGISTRY, clear_results
+
+    clear_results()
+    q = REGISTRY["get_organisms"].input_model()
+    first = REGISTRY["get_organisms"].handler(q)
+    assert REGISTRY["get_organisms"].handler(q) is first  # same input, same remembered answer
+    other = REGISTRY["get_organisms"].input_model(ward="URO")
+    assert REGISTRY["get_organisms"].handler(other) is not first
+    assert not hasattr(REGISTRY["get_dashboard"].handler, "__wrapped__")

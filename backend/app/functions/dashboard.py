@@ -21,7 +21,7 @@ def _default(user_id: str) -> DashboardOut:
     )
 
 
-@register("get_dashboard", "A user's saved layout and role.", "/dashboard", DashboardQuery, DashboardOut)
+@register("get_dashboard", "A user's saved layout and role.", "/dashboard", DashboardQuery, DashboardOut, cache=False)
 def get_dashboard(q: DashboardQuery) -> DashboardOut:
     try:
         saved = dashboard_store.store.get(q.user_id)
