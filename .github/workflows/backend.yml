@@ -93,8 +93,11 @@ jobs:
           az webapp deploy -g "$RG" -n "$APP" --src-path backend.zip --type zip --clean true --async true || CLI_OK=false
           [[ "$CLI_OK" == true ]] || echo "az reported an error; checking the deployment record instead"
           for i in $(seq 1 90); do
-            read -r RECEIVED STATUS COMPLETE < <(az webapp log deployment list -g "$RG" -n "$APP" \
-              --query "[0:1].[received_time,status,complete]" -o tsv)
+            # The scm site sometimes answers with a 504 after minutes. Cap each call, and treat a failed one as
+            # "nothing yet" (read returns 1 on empty output, which would end this step under bash -e).
+            RECEIVED="" STATUS="" COMPLETE=""
+            read -r RECEIVED STATUS COMPLETE < <(timeout 60 az webapp log deployment list -g "$RG" -n "$APP" \
+              --query "[0:1].[received_time,status,complete]" -o tsv 2>/dev/null) || true
             if [[ "$RECEIVED" > "$STARTED" ]]; then
               echo "attempt $i: received=$RECEIVED status=$STATUS complete=$COMPLETE"
               [[ "$COMPLETE" == "True" && "$STATUS" == "4" ]] && exit 0
