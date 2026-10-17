@@ -76,12 +76,12 @@ GoRouter buildRouter(SessionCubit session) {
         path: Routes.doctor,
         pageBuilder: (_, s) =>
             _page(s, DoctorHomePage(initial: s.uri.queryParameters.isEmpty ? null : _profileOf(s))),
-        routes: [
-          GoRoute(
-            path: 'answer',
-            pageBuilder: (_, s) => _page(s, DoctorAnswerPage(profile: _profileOf(s))),
-          ),
-        ],
+      ),
+      // A sibling, not a child of /doctor: a child would keep the home page (and its filled-in
+      // form) alive underneath, so "New patient" would come back to the old patient.
+      GoRoute(
+        path: Routes.answer,
+        pageBuilder: (_, s) => _page(s, DoctorAnswerPage(profile: _profileOf(s))),
       ),
       GoRoute(path: Routes.hygiene, pageBuilder: (_, s) => _page(s, const HygienePage())),
       GoRoute(

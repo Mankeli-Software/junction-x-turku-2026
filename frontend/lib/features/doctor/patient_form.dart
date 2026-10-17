@@ -9,6 +9,35 @@ import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
 import 'patient_form_cubit.dart';
 
+/// The "Not sure? Ask the AI" choice on the infection step: hands over to the chat.
+class _AskAi {
+  const _AskAi();
+}
+
+const _askAi = _AskAi();
+
+/// The chat question for a patient whose infection is unknown, from the words chosen so far.
+String _askAiQuestion(PatientProfile p) {
+  final who = [
+    if (p.sex != null) 'a ${p.sex!.inSentence}',
+    if (p.ageBand != null) 'aged ${p.ageBand!.short}',
+    if (p.ward != null) 'on ${p.ward!.label}',
+  ].join(' ');
+  final started = p.onset == null ? '' : ' It started ${p.onset!.inSentence}.';
+  return who.isEmpty
+      ? "I'm not sure what kind of infection my patient has.$started"
+      : "My patient is $who. I'm not sure what kind of infection it is.$started";
+}
+
+/// Picks [value], or for "Ask the AI" opens the chat with the patient so far.
+void _choose(BuildContext context, PatientFormState state, Object value) {
+  if (value is _AskAi) {
+    context.read<CatalogActions>().ask(_askAiQuestion(state.profile));
+  } else {
+    context.read<PatientFormCubit>().pick(value);
+  }
+}
+
 class _Option {
   const _Option(this.value, this.title, this.token, {this.sub, this.icon});
 
@@ -70,6 +99,13 @@ List<_Option> _options(PatientField f, Ward? home) => switch (f) {
           InfectionType.pneumonia => LucideIcons.wind,
         },
       ),
+    const _Option(
+      _askAi,
+      'Not sure? Ask the AI',
+      '',
+      sub: "Continues in the chat with what you've chosen",
+      icon: LucideIcons.sparkles,
+    ),
   ],
   PatientField.onset => [
     for (final o in Onset.values)
@@ -133,7 +169,7 @@ class PatientForm extends StatelessWidget {
             final options = _options(active, homeWard);
             final n = _digits.indexOf(e.logicalKey) + 1;
             if (n < 1 || n > options.length) return KeyEventResult.ignored;
-            cubit.pick(options[n - 1].value);
+            _choose(context, state, options[n - 1].value);
             return KeyEventResult.handled;
           },
           child: AmrCard(
@@ -214,7 +250,6 @@ class _Choices extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = state.active!;
-    final cubit = context.read<PatientFormCubit>();
     final options = _options(active, homeWard);
     final selected = _valueOf(active, state.profile);
     final dense = !context.isCompact && (context.isShort || options.length > 5);
@@ -267,7 +302,7 @@ class _Choices extends StatelessWidget {
                           index: i + 1,
                           selected: options[i].value == selected,
                           dense: dense,
-                          onTap: () => cubit.pick(options[i].value),
+                          onTap: () => _choose(context, state, options[i].value),
                         ),
                       ),
                   ],
@@ -398,7 +433,8 @@ class _Sentence extends StatelessWidget {
         for (final f in fields) ...[
           Text(f.lead, style: style),
           _Token(
-            label: _tokenFor(f) + (f == fields.last ? '.' : ''),
+            label: (_tokenFor(f) ?? f.placeholder) + (f == fields.last ? '.' : ''),
+            empty: _tokenFor(f) == null,
             active: f == state.active,
             confirmed: state.confirmed.contains(f),
             style: style,
@@ -410,9 +446,10 @@ class _Sentence extends StatelessWidget {
     );
   }
 
-  String _tokenFor(PatientField f) {
+  /// The chosen word, or null while the field is still empty.
+  String? _tokenFor(PatientField f) {
     final v = _valueOf(f, state.profile);
-    return _options(f, homeWard).where((o) => o.value == v).firstOrNull?.token ?? '…';
+    return _options(f, homeWard).where((o) => o.value == v).firstOrNull?.token;
   }
 }
 
@@ -423,12 +460,16 @@ class _Token extends StatelessWidget {
     required this.style,
     required this.onTap,
     this.confirmed = false,
+    this.empty = false,
   });
 
   final String label;
   final bool active;
 
-  /// Chosen by the user (not just the pre-filled default): drawn a little bolder.
+  /// Not chosen yet: the label is the category ("age"), drawn muted.
+  final bool empty;
+
+  /// Picked in this pass through the form: drawn a little bolder.
   final bool confirmed;
   final TextStyle style;
   final VoidCallback onTap;
@@ -454,8 +495,10 @@ class _Token extends StatelessWidget {
               child: AnimatedDefaultTextStyle(
                 duration: AmrMotion.base,
                 style: style.copyWith(
-                  fontWeight: confirmed || active ? FontWeight.w500 : FontWeight.w400,
-                  color: fg,
+                  fontWeight: empty
+                      ? FontWeight.w300
+                      : (confirmed || active ? FontWeight.w500 : FontWeight.w400),
+                  color: empty ? fg.withValues(alpha: 0.55) : fg,
                   height: 1.2,
                 ),
                 child: Text(label),
@@ -507,6 +550,7 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (option.value is _AskAi) return _askAiTile(context);
     final fg = selected ? AmrColors.white : AmrColors.ink;
     if (dense) return _dense(context, fg);
     return Pressable(
@@ -622,6 +666,61 @@ class _Tile extends StatelessWidget {
             large: true,
             color: selected ? AmrColors.white : AmrColors.lavenderPale,
             textColor: AmrColors.ink,
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// "Not sure? Ask the AI": violet, with the ✦ mark and an arrow, so it reads as a hand-over
+  /// to the chat rather than one more answer.
+  Widget _askAiTile(BuildContext context) => Pressable(
+    onTap: onTap,
+    builder: (_, s) => AnimatedContainer(
+      duration: AmrMotion.base,
+      curve: AmrMotion.curve,
+      constraints: BoxConstraints(minHeight: dense ? 64 : (context.isShort ? 84 : 112)),
+      padding: dense
+          ? const EdgeInsets.fromLTRB(14, 10, 14, 10)
+          : const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+      decoration: BoxDecoration(
+        color: s.hovered ? AmrColors.lavenderPale : AmrColors.lavenderSoft,
+        borderRadius: AmrRadius.card,
+        border: Border.all(color: AmrColors.violet, width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: dense ? CrossAxisAlignment.center : CrossAxisAlignment.end,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(color: AmrColors.violet, shape: BoxShape.circle),
+            child: const Icon(LucideIcons.sparkles, size: 18, color: AmrColors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  option.title,
+                  style: AmrText.body(
+                    dense ? 16 : 17,
+                    weight: FontWeight.w600,
+                    height: 1.25,
+                  ).copyWith(color: AmrColors.violet),
+                ),
+                const SizedBox(height: 2),
+                Text(option.sub ?? '', style: AmrText.body(12, height: 1.3)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          AnimatedSlide(
+            duration: AmrMotion.fast,
+            offset: Offset(s.hovered ? 0.15 : 0, 0),
+            child: const Icon(LucideIcons.arrowRight, size: 20, color: AmrColors.violet),
           ),
         ],
       ),

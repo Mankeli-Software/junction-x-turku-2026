@@ -27,7 +27,7 @@ class DoctorHomePage extends StatelessWidget {
     final ward = user?.ward;
     final actions = context.read<CatalogActions>();
     return BlocProvider(
-      create: (_) => PatientFormCubit(homeWard: ward, initial: initial),
+      create: (_) => PatientFormCubit(initial: initial),
       child: AppPage(
         body: PageBody(
           top: fluid(context, 32, 5, 72),

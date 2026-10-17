@@ -7,15 +7,18 @@ import '../../core/models/vocab.dart';
 /// The five words of "My patient is a [woman] aged [75+] on [Urology] with [a UTI] that
 /// started [in hospital]", in order.
 enum PatientField {
-  sex('Sex', 'My patient is a'),
-  age('Age group', 'aged'),
-  ward('Ward', 'on'),
-  infection('What kind of infection?', 'with'),
-  onset('Where did it start?', 'that started');
+  sex('Sex', 'My patient is a', 'sex'),
+  age('Age group', 'aged', 'age'),
+  ward('Ward', 'on', 'ward'),
+  infection('What kind of infection?', 'with', 'infection'),
+  onset('Where did it start?', 'that started', 'home or hospital');
 
-  const PatientField(this.question, this.lead);
+  const PatientField(this.question, this.lead, this.placeholder);
 
   final String question;
+
+  /// Shown in the sentence until the word is chosen ("My patient is a [sex] aged [age]").
+  final String placeholder;
 
   /// The words before the token in the sentence.
   final String lead;
@@ -33,7 +36,7 @@ class PatientFormState extends Equatable {
   /// The word being chosen; null once every word is confirmed ("All set").
   final PatientField? active;
 
-  /// Words the user has gone through. Pre-filled defaults count only once picked.
+  /// Words the user has gone through (an "Edit details" patient counts only once picked).
   final Set<PatientField> confirmed;
 
   bool get done => active == null;
@@ -48,21 +51,9 @@ class PatientFormState extends Equatable {
 /// The quick patient flow: tap a word, pick a tile, it moves on to the next word. After the
 /// last word the form is "All set" and offers "Show what works".
 class PatientFormCubit extends Cubit<PatientFormState> {
-  PatientFormCubit({required Ward? homeWard, PatientProfile? initial})
-    : _homeWard = homeWard,
-      // Always starts on the first word; a patient from "Edit details" stays filled in.
-      super(PatientFormState(profile: _defaults(homeWard).merge(initial)));
-
-  final Ward? _homeWard;
-
-  /// "Your ward and the usual choices are filled in for you."
-  static PatientProfile _defaults(Ward? ward) => PatientProfile(
-    sex: Sex.female,
-    ageBand: AgeBand.a75,
-    ward: ward ?? Ward.uro,
-    infectionType: InfectionType.uti,
-    onset: Onset.hospital,
-  );
+  PatientFormCubit({PatientProfile? initial})
+    // Starts blank on the first word; a patient from "Edit details" stays filled in.
+    : super(PatientFormState(profile: initial ?? const PatientProfile()));
 
   void focus(PatientField field) =>
       emit(PatientFormState(profile: state.profile, active: field, confirmed: state.confirmed));
@@ -89,17 +80,5 @@ class PatientFormCubit extends Cubit<PatientFormState> {
   }
 
   /// Back to the first word with the usual choices.
-  void startOver() => emit(PatientFormState(profile: _defaults(_homeWard)));
-}
-
-extension on PatientProfile {
-  PatientProfile merge(PatientProfile? other) => other == null
-      ? this
-      : copyWith(
-          sex: other.sex,
-          ageBand: other.ageBand,
-          ward: other.ward,
-          infectionType: other.infectionType,
-          onset: other.onset,
-        );
+  void startOver() => emit(const PatientFormState(profile: PatientProfile()));
 }

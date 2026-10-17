@@ -26,12 +26,33 @@ class ScriptedAgent implements ChatAgent {
 
   static const _onsetChoices = ['In hospital, day 3 or later', 'At home', 'Not sure, show both'];
 
+  /// Answers to "Which infection do you suspect?", by the specimen that stands in for each.
+  static const _infectionChoices = {
+    'Urinary tract (urine)': InfectionType.uti,
+    'Sepsis (blood)': InfectionType.sepsis,
+    'Wound infection': InfectionType.wound,
+  };
+
   @override
   Stream<AgentEvent> answer(String question, ChatContext ctx) async* {
     final q = question.toLowerCase().trim();
     final last = ctx.profile;
 
     // A reply to "Did the infection start at home or in hospital?"
+    // A reply to "Which infection do you suspect?": continue with the same patient.
+    final suspected = _infectionChoices[question];
+    if (_pending != null && suspected != null) {
+      final p = _pending!.copyWith(infectionType: suspected);
+      if (p.onset == null) {
+        _pending = p;
+        yield* _clarify('Did the infection start at home or in hospital?', _onsetChoices);
+      } else {
+        _pending = null;
+        yield* _coverage(p, ctx);
+      }
+      return;
+    }
+
     if (_pending != null && _onsetChoices.contains(question)) {
       final p = _pending!;
       _pending = null;
@@ -161,7 +182,9 @@ class ScriptedAgent implements ChatAgent {
     if (mentionsPatient(parsed, question)) {
       final p = mergeProfile(PatientProfile(ward: user.ward), parsed);
       if (p.infectionType == null) {
-        yield* _clarify('What kind of infection?', ['Urinary tract', 'Sepsis', 'Wound infection']);
+        // Not sure of the infection (also the "Ask the AI" tile): ask once, remember the rest.
+        _pending = p;
+        yield* _clarify('Which infection do you suspect?', [..._infectionChoices.keys]);
         return;
       }
       if (p.onset == null && p.infectionType!.inData) {
@@ -170,13 +193,6 @@ class ScriptedAgent implements ChatAgent {
         return;
       }
       yield* _coverage(p, ctx);
-      return;
-    }
-    if (last != null && ['Urinary tract', 'Sepsis', 'Wound infection'].contains(question)) {
-      final t =
-          {'Urinary tract': InfectionType.uti, 'Sepsis': InfectionType.sepsis}[question] ??
-          InfectionType.wound;
-      yield* _coverage(last.copyWith(infectionType: t), ctx);
       return;
     }
 
