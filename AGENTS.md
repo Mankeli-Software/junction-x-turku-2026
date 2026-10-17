@@ -7,6 +7,7 @@ Hackathon project (Junction x Turku 2026): **AMRight**, a continuously updated a
 - [CHALLENGE.md](CHALLENGE.md) — the challenge description, insight, resources and judging criteria. Source of truth for what to build.
 - GitHub issue #1 (`gh issue view 1`) — the project plan: users, features, API, architecture, AI → UI, build order and risks. Issue #3 holds the Azure and agent spec. Work is split into the numbered issues (DATA, ALERT, PLAT, UI); check `gh issue list` for what is open.
 - [docs/azure.md](docs/azure.md) — Azure runbook (deploy, secrets, CI).
+- [docs/age_bands.md](docs/age_bands.md) — the five age bands, how thin the data is per band, and why 18-44 is not split.
 
 ## Data
 
