@@ -42,9 +42,10 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Build the zip (app code plus a requirements.txt for the App Service build)
+      - name: Build the zip (app code, the dataset it reads, and a requirements.txt for the App Service build)
         run: |
-          mkdir -p stage && cp -r backend/app stage/app
+          mkdir -p stage/data && cp -r backend/app stage/app
+          cp -r data/synthetic_microbiology_dataset stage/data/
           python - <<'PY'
           import tomllib
           deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]
@@ -64,3 +65,8 @@ jobs:
             echo "attempt $i: $code"; [ "$code" = 200 ] && exit 0; sleep 15
           done
           exit 1
+      - name: Check a route that reads the dataset
+        run: |
+          HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
+          curl -fsS --max-time 120 "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
+            | python -c "import json,sys; d=json.load(sys.stdin); n=d['annual']['rows'][0]['resistance']['n']; print('annual n =', n); sys.exit(0 if n > 0 else 1)"
