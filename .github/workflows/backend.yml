@@ -123,14 +123,23 @@ jobs:
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
           curl -fsS --max-time 120 "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
             | python -c "import json,sys; d=json.load(sys.stdin); n=d['annual']['rows'][0]['resistance']['n']; print('annual n =', n); sys.exit(0 if n > 0 else 1)"
-      - name: Check the database row counts against the CSVs
+      - name: Check the database row counts
         run: |
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
-          curl -fsS --max-time 60 "https://$HOST/v1/data-status" | python -c "
+          # Right after a deploy both workers spend about a minute computing the alert signals and the
+          # gateway can answer 502 meanwhile, so ask again for up to two minutes.
+          for i in $(seq 1 8); do
+            if curl -fsS --max-time 60 "https://$HOST/v1/data-status" -o status.json; then
+              python - <<'PY' && exit 0
           import json, sys
-          d = json.load(sys.stdin)
-          for t, v in d['tables'].items():
-              print(f\"{t:<16}{v['expected']:>10}{v['actual']:>10}\")
-          print('signals:', d['signals'])
-          ok = d['ok'] and d['signals']['source'] == 'precomputed'  # computing them on the small plan takes minutes
-          sys.exit(0 if ok else 1)"
+          d = json.load(open("status.json"))
+          for t, v in d["tables"].items():
+              print(f"{t:<16}{v['expected']:>10}{v['actual']:>10}")
+          print("signals:", d["signals"])
+          ok = d["ok"] and d["signals"]["source"] == "precomputed"  # computing them on the small plan takes minutes
+          sys.exit(0 if ok else 1)
+          PY
+            fi
+            echo "attempt $i did not pass; waiting"; sleep 15
+          done
+          exit 1
