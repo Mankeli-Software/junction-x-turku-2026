@@ -56,7 +56,7 @@ void main() {
       await open(tester, 'sanna', '/hygiene', size: size);
       expect(find.text('What is spreading'), findsWidgets);
       await open(tester, 'elina', '/lab', size: size);
-      expect(find.textContaining('alert'), findsWidgets);
+      expect(find.textContaining(RegExp('alert', caseSensitive: false)), findsWidgets);
       await open(tester, 'elina', '/lab/alerts/trend-escherichia-coli-TMP', size: size);
       await open(tester, 'tomi', '/research', size: size);
       expect(find.text('Explore the data'), findsWidgets);
