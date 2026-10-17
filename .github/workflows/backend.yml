@@ -10,6 +10,11 @@ permissions:
   id-token: write
   contents: read
 
+# One deploy at a time; a second push waits instead of overlapping the first.
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -31,6 +36,8 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    # The App Service build takes about 5 minutes; this is only a ceiling for a run that really is stuck.
+    timeout-minutes: 25
     env:
       RG: rg-junctionturku
     steps:
@@ -70,3 +77,12 @@ jobs:
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
           curl -fsS --max-time 120 "https://$HOST/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine" \
             | python -c "import json,sys; d=json.load(sys.stdin); n=d['annual']['rows'][0]['resistance']['n']; print('annual n =', n); sys.exit(0 if n > 0 else 1)"
+      - name: Check the database row counts against the CSVs
+        run: |
+          HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
+          curl -fsS --max-time 60 "https://$HOST/v1/data-status" | python -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          for t, v in d['tables'].items():
+              print(f\"{t:<16}{v['expected']:>10}{v['actual']:>10}\")
+          sys.exit(0 if d['ok'] else 1)"

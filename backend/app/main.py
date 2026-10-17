@@ -29,6 +29,18 @@ def healthz(response: Response):
     return {"status": "database unavailable"}
 
 
+@app.get("/v1/data-status", tags=["meta"])
+def data_status(response: Response):
+    """Dataset table row counts against the CSVs. CI calls this after each deploy."""
+    try:
+        actual = db.table_counts()
+    except db.psycopg.Error:
+        response.status_code = 503
+        return {"ok": False, "error": "database unavailable"}
+    tables = {t: {"expected": n, "actual": actual[t]} for t, n in db.DATASET_ROWS.items()}
+    return {"ok": all(v["expected"] == v["actual"] for v in tables.values()), "tables": tables}
+
+
 @app.get("/v1/functions", tags=["meta"])
 def functions():
     """The registry as data: what the MCP server and the agent will expose as tools."""

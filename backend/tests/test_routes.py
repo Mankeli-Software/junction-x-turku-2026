@@ -1,4 +1,5 @@
 import pytest
+from app import db
 from app.main import REGISTRY, app
 from fastapi.testclient import TestClient
 
@@ -54,6 +55,15 @@ def test_healthz_follows_the_database(monkeypatch):
     assert client.get("/healthz").json() == {"status": "ok"}
     monkeypatch.setattr("app.main.db.ping", lambda: False)
     assert client.get("/healthz").status_code == 503
+
+
+def test_data_status_reports_mismatches(monkeypatch):
+    good = dict(db.DATASET_ROWS)
+    monkeypatch.setattr("app.main.db.table_counts", lambda: good)
+    assert client.get("/v1/data-status").json()["ok"] is True
+    monkeypatch.setattr("app.main.db.table_counts", lambda: {**good, "patients": 9_999})
+    body = client.get("/v1/data-status").json()
+    assert body["ok"] is False and body["tables"]["patients"]["actual"] == 9_999
 
 
 def test_cors():
