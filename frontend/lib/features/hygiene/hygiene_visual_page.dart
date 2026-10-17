@@ -40,19 +40,32 @@ class HygieneVisualPage extends StatelessWidget {
 }
 
 class _VisualState {
-  const _VisualState({this.phenotype = Phenotype.esbl, this.focus});
+  const _VisualState({this.phenotype, this.focus});
 
-  final Phenotype phenotype;
+  /// Only this resistant type in the tiles; null is "All types".
+  final Phenotype? phenotype;
   final Ward? focus;
 }
 
 class _VisualCubit extends Cubit<_VisualState> {
   _VisualCubit() : super(const _VisualState());
 
-  void showType(Phenotype p) => emit(_VisualState(phenotype: p, focus: state.focus));
+  void showType(Phenotype? p) => emit(_VisualState(phenotype: p, focus: state.focus));
 
   void focus(Ward w) => emit(_VisualState(phenotype: state.phenotype, focus: w));
 }
+
+// Colours that only this page uses, from the design canvas.
+const _barMuted = Color(0xFFCFCEDB);
+const _barStrong = Color(0xFF9F9DB5);
+const _lineMuted = Color(0xFFA3A2B8);
+const _critical = Color(0xFFB8003F);
+
+/// Bacteria segments: the bar charts' colours, largest share first.
+const _orgColors = [AmrColors.magenta, _barStrong, _barMuted];
+
+/// The "usual" level on every chart: navy and dashed, drawn over the bars.
+const _usualColor = AmrColors.ink;
 
 const _weeksInTile = 8;
 
@@ -68,7 +81,7 @@ class _Body extends StatelessWidget {
       top: phone ? 12 : fluid(context, 24, 4, 56),
       gap: phone ? AmrSpace.x24 : AmrSpace.x28,
       children: [
-        _Header(state: state),
+        const _Header(),
         if (user?.role == Role.careWorker && user!.wards.isNotEmpty)
           ColumnGap(
             [
@@ -91,6 +104,7 @@ class _Body extends StatelessWidget {
             builder: (context, series) => _Content(
               state: state,
               spreads: wardSpreads(spreading, only: state.phenotype),
+              allSpreads: wardSpreads(spreading),
               series: series,
             ),
           ),
@@ -101,13 +115,10 @@ class _Body extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.state});
-
-  final _VisualState state;
+  const _Header();
 
   @override
   Widget build(BuildContext context) {
-    final cubit = context.read<_VisualCubit>();
     final phone = context.isCompact;
     final title = ColumnGap([
       Breadcrumb(['Home', 'Whole hospital'], onTapFirst: () => goHome(context)),
@@ -116,20 +127,6 @@ class _Header extends StatelessWidget {
         style: phone
             ? AmrText.sora(44, em: -0.04, height: 1)
             : AmrText.sora(fluidHW(context, 40, 5, 8, 68), em: -0.035, height: 1.02),
-      ),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final p in Phenotype.values)
-            AmrButton.toggle(
-              label: p.code,
-              selected: state.phenotype == p,
-              size: AmrButtonSize.md,
-              fontSize: 15,
-              onPressed: () => cubit.showType(p),
-            ),
-        ],
       ),
     ], gap: AmrSpace.x16);
     if (phone) return title;
@@ -155,23 +152,40 @@ class _Header extends StatelessWidget {
 
 // Numbers ---------------------------------------------------------------------
 
-/// Count of the last four weeks of a ward and type, and the usual for the same four weeks.
+/// A ward's weekly counts for one resistant type, or all four added up when [p] is null.
 class _Counts {
-  const _Counts(this.now, this.usual, this.row);
+  const _Counts(this.weekly, this.normalWeekly);
 
-  final int now;
-  final double usual;
-  final SpreadingSeriesRow? row;
-
-  factory _Counts.of(SpreadingSeries s, Ward w, Phenotype p) {
-    final r = s.row(w, p);
-    final now = r == null
-        ? 0
-        : r.weekly.skip(math.max(0, r.weekly.length - 4)).fold(0, (a, b) => a + b);
-    return _Counts(now, (r?.normalWeekly ?? 0) * 4, r);
+  factory _Counts.of(SpreadingSeries s, Ward w, Phenotype? p) {
+    final rows = [
+      for (final r in s.rows)
+        if (r.ward == w && (p == null || r.phenotype == p)) r,
+    ];
+    return _Counts([
+      for (var i = 0; i < s.weekStarts.length; i++)
+        rows.fold(0, (a, r) => a + (r.weekly.elementAtOrNull(i) ?? 0)),
+    ], rows.fold(0.0, (a, r) => a + r.normalWeekly));
   }
 
-  double get ratio => usual > 0 ? now / usual : 0;
+  final List<int> weekly;
+
+  /// Typical count per week.
+  final double normalWeekly;
+
+  int _sum(int from, int to) {
+    final end = math.max(0, weekly.length + to);
+    final start = math.max(0, weekly.length + from);
+    return weekly.sublist(start, end).fold(0, (a, b) => a + b);
+  }
+
+  /// The last four weeks.
+  int get now => _sum(-4, 0);
+
+  /// The four weeks before those.
+  int get before => _sum(-8, -4);
+
+  /// Typical count for four weeks.
+  double get usual => normalWeekly * 4;
 }
 
 /// "3×", or "New" when the ward has none usually, or "Usual".
@@ -193,10 +207,18 @@ Color _tagFg(SpreadStatus s) => s == SpreadStatus.high ? AmrColors.white : AmrCo
 SpreadStatus _statusOf(SpreadingRow? r) => r == null ? SpreadStatus.usual : spreadStatus(r);
 
 class _Content extends StatelessWidget {
-  const _Content({required this.state, required this.spreads, required this.series});
+  const _Content({
+    required this.state,
+    required this.spreads,
+    required this.allSpreads,
+    required this.series,
+  });
 
   final _VisualState state;
   final List<WardSpread> spreads;
+
+  /// Every type, whatever the tiles show: the hero's "Also watch" looks across all of them.
+  final List<WardSpread> allSpreads;
   final SpreadingSeries series;
 
   @override
@@ -208,7 +230,7 @@ class _Content extends StatelessWidget {
     final focus = spreads.where((s) => s.ward == ward).firstOrNull;
     return ColumnGap(
       [
-        _Hero(spread: top, phenotype: p, series: series),
+        _Hero(spread: top, phenotype: p, all: allSpreads, series: series),
         _WardTiles(spreads: spreads, series: series, phenotype: p, selected: ward),
         _WardDetail(
           key: ValueKey((ward, p)),
@@ -216,7 +238,6 @@ class _Content extends StatelessWidget {
           phenotype: p,
           series: series,
           spread: focus,
-          allSpreads: spreads,
         ),
         _FlowSection(key: ValueKey(ward), ward: ward, raised: focus),
       ],
@@ -229,11 +250,33 @@ class _Content extends StatelessWidget {
 // Hero ------------------------------------------------------------------------
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.spread, required this.phenotype, required this.series});
+  const _Hero({
+    required this.spread,
+    required this.phenotype,
+    required this.all,
+    required this.series,
+  });
 
   final WardSpread? spread;
-  final Phenotype phenotype;
+  final Phenotype? phenotype;
+  final List<WardSpread> all;
   final SpreadingSeries series;
+
+  /// The most notable raised ward and type other than the hero's own, new ones first.
+  ({SpreadingRow row, bool isNew})? _watch(SpreadingRow hero) {
+    final rows = [
+      for (final w in all)
+        for (final r in w.rows)
+          if (spreadStatus(r).raised && !(r.ward == hero.ward && r.phenotype == hero.phenotype)) r,
+    ];
+    if (rows.isEmpty) return null;
+    bool isNew(SpreadingRow r) => r.normal < 0.5;
+    rows.sort((a, b) {
+      final n = (isNew(b) ? 1 : 0).compareTo(isNew(a) ? 1 : 0);
+      return n != 0 ? n : (b.count - b.normal).compareTo(a.count - a.normal);
+    });
+    return (row: rows.first, isNew: isNew(rows.first));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,7 +288,8 @@ class _Hero extends StatelessWidget {
         radius: AmrRadius.panel,
         padding: EdgeInsets.all(fluid(context, 24, 3, 40)),
         child: Text(
-          'No ward is above usual for ${phenotype.code} in the last 4 weeks.',
+          'No ward is above usual for ${phenotype?.code ?? 'any resistant type'} '
+          'in the last 4 weeks.',
           style: AmrText.sora(phone ? 24 : 30, em: -0.03, height: 1.2),
         ),
       );
@@ -256,8 +300,8 @@ class _Hero extends StatelessWidget {
     final organism = mix == null || mix.organisms.isEmpty
         ? null
         : (mix.organisms.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).first.key;
-    final weekly = c.row?.weekly ?? const <int>[];
     final big = _ratioLabel(c.now, c.usual, raised: true);
+    final watch = _watch(row);
     final left = ColumnGap([
       Row(
         mainAxisSize: MainAxisSize.min,
@@ -268,21 +312,23 @@ class _Hero extends StatelessWidget {
             decoration: const BoxDecoration(color: AmrColors.magenta, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
-          Text('Needs action · ${s.ward.label}', style: AmrText.label(14)),
+          Text('Most critical right now · ${s.ward.label}', style: AmrText.label(14)),
         ],
       ),
       Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(big, style: AmrText.sora(phone ? 88 : 120, em: -0.05, height: 0.9)),
-          const SizedBox(width: 16),
+          Text(big, style: AmrText.sora(phone ? 88 : 120, em: -0.05, height: 1)),
+          const SizedBox(width: 18),
           Flexible(
-            child: Text(
-              big == 'New'
-                  ? 'patients with ${row.phenotype.code},\nusually none'
-                  : 'the usual number of\npatients with ${row.phenotype.code}',
-              style: AmrText.body(18, height: 1.35),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                big == 'New'
+                    ? 'patients with ${row.phenotype.code},\nusually none'
+                    : 'the usual number of\npatients with ${row.phenotype.code}',
+                style: AmrText.body(20, height: 1.3),
+              ),
             ),
           ),
         ],
@@ -296,37 +342,51 @@ class _Hero extends StatelessWidget {
             ),
             TextSpan(
               text:
-                  ' in the last 4 weeks · usually ${usualLabel(c.usual)}'
+                  ' in the last 4 weeks'
                   '${organism == null ? '' : ' · mostly ${organism.short}'}',
             ),
           ],
         ),
         style: AmrText.body(16),
       ),
+      if (watch != null)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: const BoxDecoration(color: AmrColors.white, borderRadius: AmrRadius.pill),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Also watch  ',
+                  style: AmrText.label(14).copyWith(color: AmrColors.magenta),
+                ),
+                TextSpan(
+                  text: watch.isNew
+                      ? '${watch.row.count} new ${watch.row.phenotype.code} '
+                            '${watch.row.count == 1 ? 'patient' : 'patients'} '
+                            'on ${watch.row.ward.label}'
+                      : '${watch.row.count} ${watch.row.phenotype.code} patients on '
+                            '${watch.row.ward.label}, usually ${usualLabel(watch.row.normal)}',
+                ),
+              ],
+            ),
+            style: AmrText.body(14),
+          ),
+        ),
     ], gap: AmrSpace.x14);
-    final chart = ColumnGap(
-      [
-        _WeekBars(
-          values: weekly,
-          usual: c.row?.normalWeekly ?? 0,
-          height: 180,
-          raisedFrom: weekly.length - 4,
-          raisedColor: AmrColors.magenta,
-          baseColor: AmrColors.ink,
-          usualLabel: 'usual',
-          semantics:
-              '${s.ward.label} ${row.phenotype.code} cases per week, last ${weekly.length} weeks',
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Patients per week · ${weekly.length} weeks ago', style: AmrText.body(12)),
-            Text('Last 4 weeks', style: AmrText.label(12)),
-          ],
-        ),
-      ],
-      gap: AmrSpace.x10,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final chart = _BarChart(
+      values: [for (final v in c.weekly) v.toDouble()],
+      usual: c.normalWeekly,
+      height: 180,
+      raisedFrom: c.weekly.length - 4,
+      raisedColor: AmrColors.magenta,
+      baseColor: _barMuted,
+      usualLabel: 'usual/week',
+      rightWidth: 96,
+      band: true,
+      semantics:
+          '${s.ward.label} patients with ${row.phenotype.code} per week, last '
+          '${c.weekly.length} weeks',
     );
     return AmrCard(
       tone: AmrCardTone.alert,
@@ -352,10 +412,11 @@ class _Hero extends StatelessWidget {
   }
 }
 
-/// Bars per week on a navy baseline with a dashed "usual" level. The last weeks, from
-/// [raisedFrom], use [raisedColor]. [showValues] puts the count on top of each bar.
-class _WeekBars extends StatelessWidget {
-  const _WeekBars({
+/// Weekly bars on a navy baseline with a scale on the left, light grid lines, and the dashed
+/// "usual" level drawn over the bars with its label to the right. The weeks from [raisedFrom]
+/// use [raisedColor]; with [band], they also sit on a pink band labelled "Last 4 weeks".
+class _BarChart extends StatelessWidget {
+  const _BarChart({
     required this.values,
     required this.usual,
     required this.height,
@@ -363,12 +424,13 @@ class _WeekBars extends StatelessWidget {
     required this.raisedColor,
     required this.baseColor,
     required this.usualLabel,
+    required this.rightWidth,
     required this.semantics,
-    this.showValues = false,
     this.gap = 8,
+    this.band = false,
   });
 
-  final List<int> values;
+  final List<double> values;
 
   /// Typical count per week.
   final double usual;
@@ -377,84 +439,168 @@ class _WeekBars extends StatelessWidget {
   final Color raisedColor;
   final Color baseColor;
   final String usualLabel;
+  final double rightWidth;
   final String semantics;
-  final bool showValues;
+
   final double gap;
-  static const minMax = 3.5;
-  static const fill = 0.85;
+  final bool band;
 
   @override
   Widget build(BuildContext context) {
-    final max = values.fold<double>(math.max(minMax, usual), (m, v) => math.max(m, v.toDouble()));
-    final usualBottom = usual / max * fill;
+    // The scale follows the data: one step per patient while the counts are small
+    // (0, 1, 2, 3, 4), bigger steps only once there would be more than six ticks.
+    final peak = values.fold<double>(usual, (m, v) => math.max(m, v));
+    final need = math.max(1, peak.ceil());
+    final step = need <= 6 ? 1 : (need / 5).ceil();
+    final top = (need / step).ceil() * step;
+    final max = top.toDouble();
+    final ticks = [for (var t = 0; t <= top; t += step) t];
+    final h = height;
+    double at(double v) => v / max * h;
+    final pad = band ? 26.0 : 0.0;
     return Semantics(
       label: semantics,
-      child: SizedBox(
-        height: height,
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final h = box.maxHeight;
-            return Container(
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: AmrColors.ink, width: 1.5)),
+      child: Padding(
+        padding: EdgeInsets.only(top: pad),
+        child: SizedBox(
+          height: h,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 18,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    for (final t in ticks)
+                      Positioned(
+                        right: 0,
+                        bottom: at(t.toDouble()) - 7,
+                        child: Text('$t', style: AmrText.body(12, height: 14 / 12)),
+                      ),
+                  ],
+                ),
               ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: usualBottom * h,
-                    child: CustomPaint(
-                      size: const Size(double.infinity, 1.5),
-                      painter: _DashedLine(),
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: usualBottom * h + 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      color: showValues ? AmrColors.white : null,
-                      child: Text(usualLabel, style: AmrText.body(showValues ? 11 : 12)),
-                    ),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      for (var i = 0; i < values.length; i++) ...[
-                        if (i > 0) SizedBox(width: gap),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
+              const SizedBox(width: 8),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final w = box.maxWidth;
+                    final share = values.isEmpty ? 0.0 : math.min(1.0, 4 / values.length);
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (final t in ticks.where((t) => t > 0))
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: at(t.toDouble()),
+                            child: Container(
+                              height: 1,
+                              color: AmrColors.ink.withValues(alpha: band ? 0.12 : 0.10),
+                            ),
+                          ),
+                        if (band) ...[
+                          Positioned(
+                            top: -26,
+                            bottom: 0,
+                            right: -4,
+                            width: w * share + 4,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: AmrColors.magenta.withValues(alpha: 0.10),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: -22,
+                            right: 0,
+                            width: w * share,
+                            child: Text(
+                              'Last 4 weeks',
+                              textAlign: TextAlign.center,
+                              style: AmrText.label(12).copyWith(color: _critical),
+                            ),
+                          ),
+                          Positioned(
+                            top: -22,
+                            left: 0,
+                            width: w * (1 - share),
+                            child: Text(
+                              '${values.length - 4} weeks before',
+                              textAlign: TextAlign.center,
+                              style: AmrText.label(12),
+                            ),
+                          ),
+                        ],
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              if (showValues)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Text('${values[i]}', style: AmrText.label(13)),
-                                ),
-                              Container(
-                                height: math.max(
-                                  showValues ? 2 : 3,
-                                  values[i] / max * fill * (showValues ? h - 22 : h),
-                                ),
-                                decoration: BoxDecoration(
-                                  color: i >= raisedFrom ? raisedColor : baseColor,
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(6),
-                                    bottom: Radius.circular(2),
+                              for (var i = 0; i < values.length; i++) ...[
+                                if (i > 0) SizedBox(width: gap),
+                                Expanded(
+                                  child: Container(
+                                    // A week with none has no bar: the scale starts at 0.
+                                    height: values[i] <= 0 ? 0 : math.max(2, at(values[i])),
+                                    decoration: BoxDecoration(
+                                      color: i >= raisedFrom ? raisedColor : baseColor,
+                                      borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(6),
+                                        bottom: Radius.circular(2),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
+                        // The baseline sits on 0, where the bars start and the "0" is labelled.
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: -0.75,
+                          child: Container(height: 1.5, color: AmrColors.ink),
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: -14,
+                          bottom: at(usual),
+                          child: CustomPaint(
+                            size: const Size(double.infinity, 2.5),
+                            painter: _DashedLine(width: 2.5),
+                          ),
+                        ),
                       ],
-                    ],
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-            );
-          },
+              SizedBox(
+                width: rightWidth,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: 18,
+                      bottom: at(usual) - 8,
+                      child: Text(
+                        usualLabel,
+                        style: AmrText.label(
+                          band ? 13 : 12,
+                        ).copyWith(height: band ? 16 / 13 : 1.25),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -462,18 +608,22 @@ class _WeekBars extends StatelessWidget {
 }
 
 class _DashedLine extends CustomPainter {
+  _DashedLine({this.width = 2});
+
+  final double width;
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AmrColors.ink.withValues(alpha: 0.55)
-      ..strokeWidth = 1.5;
+      ..color = _usualColor
+      ..strokeWidth = width;
     for (var x = 0.0; x < size.width; x += 8) {
-      canvas.drawLine(Offset(x, 0), Offset(math.min(x + 4, size.width), 0), paint);
+      canvas.drawLine(Offset(x, 0), Offset(math.min(x + 5, size.width), 0), paint);
     }
   }
 
   @override
-  bool shouldRepaint(_DashedLine old) => false;
+  bool shouldRepaint(_DashedLine old) => old.width != width;
 }
 
 // Ward tiles ------------------------------------------------------------------
@@ -488,49 +638,66 @@ class _WardTiles extends StatelessWidget {
 
   final List<WardSpread> spreads;
   final SpreadingSeries series;
-  final Phenotype phenotype;
+  final Phenotype? phenotype;
   final Ward selected;
 
   @override
   Widget build(BuildContext context) {
     final phone = context.isCompact;
     final cubit = context.read<_VisualCubit>();
-    final legend = Wrap(
-      spacing: 16,
-      runSpacing: 4,
-      children: [
-        _LegendItem(label: 'Patients with ${phenotype.code} per week', dashed: false),
-        const _LegendItem(label: 'Usual', dashed: true),
-      ],
-    );
+    final what = phenotype == null
+        ? 'Patients with any resistant type per week'
+        : 'Patients with ${phenotype!.code} per week';
     return ColumnGap(
       [
         Wrap(
           alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 16,
-          runSpacing: 8,
+          runSpacing: 10,
           children: [
-            ColumnGap([
-              Text('All wards', style: AmrText.sora(phone ? 24 : 28, em: -0.02)),
-              Text('Tap a ward to see its data.', style: AmrText.body(14)),
-            ], gap: AmrSpace.x4),
-            legend,
+            Text('All wards', style: AmrText.sora(phone ? 24 : 28, em: -0.02)),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                AmrButton.toggle(
+                  label: 'All types',
+                  selected: phenotype == null,
+                  size: AmrButtonSize.md,
+                  fontSize: 14,
+                  onPressed: () => cubit.showType(null),
+                ),
+                for (final p in Phenotype.values)
+                  AmrButton.toggle(
+                    label: p.code,
+                    selected: phenotype == p,
+                    size: AmrButtonSize.md,
+                    fontSize: 14,
+                    onPressed: () => cubit.showType(p),
+                  ),
+              ],
+            ),
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _LegendItem(label: '$what, $_weeksInTile weeks', dashed: false),
+                const _LegendItem(label: 'Usual', dashed: true),
+              ],
+            ),
           ],
         ),
         AutoGrid(
           minItemWidth: 240,
           gap: AmrSpace.x12,
           children: [
-            for (final w in spreads)
+            // Always the same order, so a tile does not move when the numbers change.
+            for (final w in [...spreads]..sort((a, b) => a.ward.index.compareTo(b.ward.index)))
               _WardTile(
                 spread: w,
                 counts: _Counts.of(series, w.ward, phenotype),
-                counts3: [
-                  for (final o in Phenotype.values)
-                    if (o != phenotype) (o, _Counts.of(series, w.ward, o)),
-                ],
-                phenotype: phenotype,
                 selected: w.ward == selected,
                 onTap: () => cubit.focus(w.ward),
               ),
@@ -556,8 +723,8 @@ class _LegendItem extends StatelessWidget {
       SizedBox(
         width: 18,
         child: dashed
-            ? CustomPaint(size: const Size(18, 1.5), painter: _DashedLine())
-            : Container(height: 2.5, color: AmrColors.ink),
+            ? CustomPaint(size: const Size(18, 2.5), painter: _DashedLine(width: 2.5))
+            : Container(height: 2.5, color: AmrColors.magenta),
       ),
       const SizedBox(width: 6),
       Text(label, style: AmrText.body(13)),
@@ -569,25 +736,26 @@ class _WardTile extends StatelessWidget {
   const _WardTile({
     required this.spread,
     required this.counts,
-    required this.counts3,
-    required this.phenotype,
     required this.selected,
     required this.onTap,
   });
 
   final WardSpread spread;
   final _Counts counts;
-  final List<(Phenotype, _Counts)> counts3;
-  final Phenotype phenotype;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final status = spread.status;
-    final weekly = counts.row?.weekly ?? const <int>[];
-    final last = weekly.skip(math.max(0, weekly.length - _weeksInTile)).toList();
     final raised = status.raised;
+    final last = _smooth(counts.weekly).skip(math.max(0, counts.weekly.length - _weeksInTile));
+    final diff = counts.now - counts.before;
+    final trend = diff > 0
+        ? '↑ up from ${counts.before} before'
+        : diff < 0
+        ? '↓ down from ${counts.before} before'
+        : '→ same as before';
     return Pressable(
       onTap: onTap,
       pressScale: 0.99,
@@ -626,46 +794,35 @@ class _WardTile extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${counts.now}', style: AmrText.sora(44, em: -0.03, height: 1)),
-                    const SizedBox(height: 6),
-                    Text('patients · usual ${usualLabel(counts.usual)}', style: AmrText.body(12)),
-                  ],
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: SizedBox(
-                    height: 48,
-                    child: CustomPaint(
-                      painter: _SparkPainter(
-                        values: last,
-                        usual: counts.row?.normalWeekly ?? 0,
-                        color: raised ? AmrColors.magenta : AmrColors.ink,
+                Text('${counts.now}', style: AmrText.sora(44, em: -0.03, height: 1)),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('patients in 4 weeks', style: AmrText.body(13, height: 1.3)),
+                      Text(
+                        trend,
+                        style: AmrText.label(13).copyWith(
+                          height: 1.3,
+                          color: diff > 0 && raised ? _critical : AmrColors.ink,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.only(top: 10),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0x261D204E))),
-              ),
-              child: Row(
-                children: [
-                  for (var i = 0; i < counts3.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 6),
-                    Expanded(
-                      child: _TypeChip(phenotype: counts3[i].$1, counts: counts3[i].$2),
-                    ),
-                  ],
-                ],
+            SizedBox(
+              height: 48,
+              child: CustomPaint(
+                painter: _SparkPainter(
+                  values: last.toList(),
+                  usual: counts.normalWeekly,
+                  color: raised ? AmrColors.magenta : _lineMuted,
+                ),
               ),
             ),
           ],
@@ -675,41 +832,18 @@ class _WardTile extends StatelessWidget {
   }
 }
 
-class _TypeChip extends StatelessWidget {
-  const _TypeChip({required this.phenotype, required this.counts});
-
-  final Phenotype phenotype;
-  final _Counts counts;
-
-  @override
-  Widget build(BuildContext context) {
-    final isNew = counts.now > 0 && counts.usual <= 0;
-    final higher = counts.now >= 2 && counts.now > counts.usual * 1.4;
-    final (bg, fg) = isNew
-        ? (AmrColors.magenta, AmrColors.white)
-        : higher
-        ? (AmrColors.blush, AmrColors.ink)
-        : (const Color(0xB3FFFFFF), AmrColors.ink);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(phenotype.code, style: AmrText.body(12).copyWith(color: fg)),
-          const SizedBox(width: 4),
-          Text('${counts.now}', style: AmrText.label(12).copyWith(color: fg)),
-        ],
-      ),
-    );
-  }
-}
+/// Trailing 3-week average, so one busy week does not read as a spike on a small ward.
+List<double> _smooth(List<int> weekly) => [
+  for (var i = 0; i < weekly.length; i++)
+    weekly.sublist(math.max(0, i - 2), i + 1).fold(0, (a, b) => a + b) /
+        (i - math.max(0, i - 2) + 1),
+];
 
 /// The last weeks as a line on a 160 x 48 grid, with a dashed usual level, as in the design.
 class _SparkPainter extends CustomPainter {
   _SparkPainter({required this.values, required this.usual, required this.color});
 
-  final List<int> values;
+  final List<double> values;
   final double usual;
   final Color color;
 
@@ -719,17 +853,23 @@ class _SparkPainter extends CustomPainter {
     final max = values.fold<double>(math.max(3.5, usual), (m, v) => math.max(m, v.toDouble()));
     double y(double v) => size.height * (44 - v / max * 40) / 48;
     final u = Paint()
-      ..color = AmrColors.ink.withValues(alpha: 0.6)
-      ..strokeWidth = 1.2;
+      ..color = _usualColor
+      ..strokeWidth = 2;
     final uy = y(usual);
-    for (var x = 0.0; x < size.width; x += 7) {
-      canvas.drawLine(Offset(x, uy), Offset(math.min(x + 4, size.width), uy), u);
+    for (var x = 0.0; x < size.width; x += 8) {
+      canvas.drawLine(Offset(x, uy), Offset(math.min(x + 5, size.width), uy), u);
     }
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = values.length == 1 ? 0.0 : i * size.width / (values.length - 1);
-      i == 0 ? path.moveTo(x, y(values[i].toDouble())) : path.lineTo(x, y(values[i].toDouble()));
+    // Quadratic curves between the midpoints of neighbouring points: smooth, never overshoots.
+    final pts = [
+      for (var i = 0; i < values.length; i++)
+        Offset(values.length == 1 ? 0.0 : i * size.width / (values.length - 1), y(values[i])),
+    ];
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (var i = 1; i < pts.length - 1; i++) {
+      final mid = Offset((pts[i].dx + pts[i + 1].dx) / 2, (pts[i].dy + pts[i + 1].dy) / 2);
+      path.quadraticBezierTo(pts[i].dx, pts[i].dy, mid.dx, mid.dy);
     }
+    path.lineTo(pts.last.dx, pts.last.dy);
     canvas.drawPath(
       path,
       Paint()
@@ -755,19 +895,20 @@ class _WardDetail extends StatelessWidget {
     required this.phenotype,
     required this.series,
     required this.spread,
-    required this.allSpreads,
   });
 
   final Ward ward;
-  final Phenotype phenotype;
+  final Phenotype? phenotype;
   final SpreadingSeries series;
   final WardSpread? spread;
-  final List<WardSpread> allSpreads;
 
   Future<void> _pin(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await context.read<DashboardCubit>().pin(
-      WidgetPlacement(widget: 'SpreadingCounts', params: {'phenotype': phenotype.code}),
+      WidgetPlacement(
+        widget: 'SpreadingCounts',
+        params: {if (phenotype != null) 'phenotype': phenotype!.code},
+      ),
     );
     messenger.showSnackBar(
       SnackBar(content: Text(ok ? 'Pinned to your home' : 'Could not pin it, try again')),
@@ -794,13 +935,11 @@ class _WardDetail extends StatelessWidget {
     final phone = context.isCompact;
     final actions = context.read<CatalogActions>();
     final c = _Counts.of(series, ward, phenotype);
-    final weekly = c.row?.weekly ?? const <int>[];
+    final weekly = c.weekly;
+    final label = phenotype?.code ?? 'resistant';
     final mix = series.mix(ward);
     final types = {for (final p in Phenotype.values) p: _Counts.of(series, ward, p)};
     final found = types.values.fold(0, (a, b) => a + b.now);
-    final raised = _statusOf(
-      spread?.rows.where((r) => r.phenotype == phenotype).firstOrNull,
-    ).raised;
     final short = ward == Ward.ed ? 'the ED' : ward.short;
 
     final header = Wrap(
@@ -825,7 +964,9 @@ class _WardDetail extends StatelessWidget {
               label: 'Ask about $short',
               size: AmrButtonSize.md,
               fontSize: 14,
-              onPressed: () => actions.ask('Tell me about ${phenotype.code} on ${ward.label}'),
+              onPressed: () => actions.ask(
+                'Tell me about ${phenotype?.code ?? 'resistant bacteria'} on ${ward.label}',
+              ),
             ),
             AmrButton(
               label: 'Export',
@@ -848,32 +989,35 @@ class _WardDetail extends StatelessWidget {
     final chart = ColumnGap(
       [
         ColumnGap([
-          Text('Patients with a new ${phenotype.code} finding, per week', style: AmrText.label(15)),
+          Text('Patients with a new $label finding, per week', style: AmrText.label(15)),
           Text(
-            'Each bar is one week. The number on top is how many patients.',
+            'Each bar is one week. Read the number of patients from the scale on the left.',
             style: AmrText.body(13),
           ),
         ], gap: AmrSpace.x4),
         Text('Patients', style: AmrText.label(12)),
-        _WeekBars(
-          values: weekly,
-          usual: c.row?.normalWeekly ?? 0,
+        _BarChart(
+          values: [for (final v in weekly) v.toDouble()],
+          usual: c.normalWeekly,
           height: 170,
           raisedFrom: weekly.length - 4,
-          raisedColor: raised ? AmrColors.magenta : AmrColors.violet,
-          baseColor: AmrColors.lavender,
-          usualLabel: 'usual ${_usualWeek(c.row?.normalWeekly ?? 0)} a week',
-          semantics:
-              '${ward.label} patients with a new ${phenotype.code} finding per week: ${weekly.join(', ')}',
-          showValues: true,
+          raisedColor: AmrColors.magenta,
+          baseColor: _barMuted,
+          usualLabel: 'usual/week',
+          rightWidth: 96,
           gap: 6,
+          semantics:
+              '${ward.label} patients with a new $label finding per week: ${weekly.join(', ')}',
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Week of ${_shortDate(series.weekStarts.firstOrNull)}', style: AmrText.body(12)),
-            Text('Week of ${_shortDate(series.weekStarts.lastOrNull)}', style: AmrText.body(12)),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(26, 0, 104, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Week of ${_shortDate(series.weekStarts.firstOrNull)}', style: AmrText.body(12)),
+              Text('Week of ${_shortDate(series.weekStarts.lastOrNull)}', style: AmrText.body(12)),
+            ],
+          ),
         ),
       ],
       gap: AmrSpace.x10,
@@ -888,7 +1032,7 @@ class _WardDetail extends StatelessWidget {
         ColumnGap(
           [
             Text('By resistant type', style: AmrText.body(14, weight: FontWeight.w500)),
-            for (final p in [phenotype, ...Phenotype.values.where((x) => x != phenotype)])
+            for (final p in [?phenotype, ...Phenotype.values.where((x) => x != phenotype)])
               _TypeRow(
                 phenotype: p,
                 counts: types[p]!,
@@ -918,7 +1062,7 @@ class _WardDetail extends StatelessWidget {
                         Expanded(
                           flex: orgs[i].value,
                           child: ColoredBox(
-                            color: AmrColors.series[math.min(i, 2)],
+                            color: _orgColors[math.min(i, 2)],
                             child: const SizedBox.expand(),
                           ),
                         ),
@@ -938,7 +1082,7 @@ class _WardDetail extends StatelessWidget {
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: AmrColors.series[math.min(i, 2)],
+                            color: _orgColors[math.min(i, 2)],
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -988,12 +1132,6 @@ class _WardDetail extends StatelessWidget {
     );
   }
 }
-
-String _usualWeek(double perWeek) => perWeek <= 0
-    ? '0'
-    : perWeek < 1
-    ? 'under 1'
-    : '${(perWeek * 10).round() / 10}';
 
 String _shortDate(DateTime? d) => d == null ? '' : '${d.day}.${d.month}.';
 
@@ -1187,7 +1325,7 @@ class _FlowState extends State<_Flow> {
                 ColumnGap([
                   Text('Patient going somewhere less common?', style: AmrText.label(16)),
                   Text(
-                    'Warn any ward or care home. They get the totals and what to watch for, '
+                    'Warn any ward. They get the totals and what to watch for, '
                     'never patient details.',
                     style: AmrText.body(14),
                   ),
@@ -1217,7 +1355,7 @@ class _FlowState extends State<_Flow> {
                                 onChanged: (v) => setState(() => _search = v),
                                 style: AmrText.body(15),
                                 decoration: InputDecoration.collapsed(
-                                  hintText: 'Find any ward, e.g. Cardiology or a care home',
+                                  hintText: 'Find a ward, e.g. Surgery or Health centre North',
                                   hintStyle: AmrText.body(
                                     15,
                                   ).copyWith(color: AmrColors.ink.withValues(alpha: 0.6)),
@@ -1545,7 +1683,7 @@ class _FlowPainter extends CustomPainter {
       final y = rows[i] * k;
       final path = Path()
         ..moveTo(110 * k, 130 * k)
-        ..cubicTo(240 * k, 130 * k, 240 * k, y, 340 * k, y);
+        ..cubicTo(240 * k, 130 * k, 240 * k, y, 370 * k, y);
       canvas.drawPath(
         path,
         Paint()
