@@ -8,6 +8,7 @@ import logging
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -149,6 +150,17 @@ class DataStore:
     def __init__(self, tables: Tables):
         self.tables = tables
         self._frame = build_isolate_frame(tables)  # sorted by sample_date
+        # The date of the same patient's previous isolate of this organism and specimen (NaT for the
+        # first). An isolate is the first in a window exactly when it lies in the window and that
+        # date is before the window starts, so a window is two comparisons, not a sort and a dedup:
+        # a weekly series needs hundreds of windows.
+        self._dates = self._frame["sample_date"].to_numpy()
+        self._isolate_index = pd.Index(self._frame["isolate_id"])
+        self._prev_dates = (
+            self._frame.groupby(["patient_id", "organism", "specimen"], sort=False, dropna=False)["sample_date"]
+            .shift(1)
+            .to_numpy()
+        )
         self._firsts: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
         sir_cols = ["isolate_id", "antibiotic_code", "result"]
         self.sir = self._frame.merge(tables.susceptibility[sir_cols], on="isolate_id", how="inner")
@@ -196,10 +208,26 @@ class DataStore:
         if key in self._firsts:
             self._firsts.move_to_end(key)
         else:
-            self._firsts[key] = first_isolates(self.isolates(as_of), start, end)
+            lo, hi = np.datetime64(pd.Timestamp(start)), np.datetime64(pd.Timestamp(end))
+            # end is never past as_of, so nothing later is read; NaT >= lo is False: a first ever
+            in_window = (self._dates >= lo) & (self._dates <= hi) & ~(self._prev_dates >= lo)
+            self._firsts[key] = self._frame[in_window]  # same rows, order and index as first_isolates()
             if len(self._firsts) > FIRSTS_CACHE_SIZE:
                 self._firsts.popitem(last=False)
         return self._firsts[key]
+
+    def first_in_window(self, isolate_ids: pd.Series) -> Callable[[date, date], np.ndarray]:
+        """For these isolates (rows of the frame or of sir), a function (start, end) -> which of them
+        are first isolates in that window: the same selection as first_isolates, without the lookup
+        of ids per window. The caller keeps end on or before as_of."""
+        pos = self._isolate_index.get_indexer(isolate_ids)
+        dates, prev = self._dates[pos], self._prev_dates[pos]
+
+        def mask(start: date, end: date) -> np.ndarray:
+            lo, hi = np.datetime64(pd.Timestamp(start)), np.datetime64(pd.Timestamp(end))
+            return (dates >= lo) & (dates <= hi) & ~(prev >= lo)
+
+        return mask
 
     def susceptibility(self, isolates: pd.DataFrame) -> pd.DataFrame:
         """S/R rows for the given isolates (e.g. a first-isolate selection)."""

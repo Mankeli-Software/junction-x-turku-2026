@@ -16,6 +16,7 @@ the prior period (beta-binomial method of moments). It is not tuned to any known
 estimate is a calibrated forecast, and spotting outbreaks is the alerts module's job.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from statistics import median
@@ -180,11 +181,20 @@ def estimate(r: int, n: int, ward_type: tuple[int, int] | None, hospital: tuple[
     )
 
 
-def _context(store: DataStore, as_of: date, start: date, end: date, stratum: pd.DataFrame, group_cols: list[str]) -> _Context:
-    win_ids = store.first_isolates(as_of, "custom", start, end)["isolate_id"]
-    ann_ids = store.first_isolates(as_of, "custom", prior_start(start, end), end)["isolate_id"]
-    win = stratum[stratum["isolate_id"].isin(win_ids)]
-    ann = stratum[stratum["isolate_id"].isin(ann_ids)]
+def _context(
+    store: DataStore, as_of: date, start: date, end: date, stratum: pd.DataFrame, group_cols: list[str],
+    firsts: Callable[[date, date], np.ndarray] | None = None,
+) -> _Context:
+    """`firsts` (from store.first_in_window(stratum ids)) picks the first isolates of the stratum
+    directly; the weekly series passes it because it builds hundreds of windows."""
+    if firsts is not None:
+        win = stratum[firsts(start, end)]
+        ann = stratum[firsts(prior_start(start, end), end)]
+    else:
+        win_ids = store.first_isolates(as_of, "custom", start, end)["isolate_id"]
+        ann_ids = store.first_isolates(as_of, "custom", prior_start(start, end), end)["isolate_id"]
+        win = stratum[stratum["isolate_id"].isin(win_ids)]
+        ann = stratum[stratum["isolate_id"].isin(ann_ids)]
     ann_ward = _counts(ann, [*group_cols, "ward_code"])
 
     per_key: dict[tuple, tuple[list[int], list[int]]] = {}
@@ -264,13 +274,17 @@ def weekly_series(
     if f.organism is None or f.drug is None:
         raise ValueError("a series needs one organism and one drug")
     key = (f.organism, f.drug)
-    stratum = _stratum(store, f)
+    # Only the columns the estimates read: each of the hundreds of windows copies its rows.
+    stratum = _stratum(store, f)[["isolate_id", "organism", "drug", "ward_code", "ward_type", "result"]]
+    firsts = store.first_in_window(stratum["isolate_id"])
     out: dict[str, list[dict]] = {w: [] for w in [*wards, "hospital"]}
     monday = pd.Timestamp(date_from) - pd.Timedelta(days=pd.Timestamp(date_from).weekday())
     while monday.date() <= min(date_to, as_of):
         week = monday.date()
         point_end = min(week + timedelta(days=6), as_of)
-        ctx = _context(store, as_of, point_end - timedelta(days=window_days - 1), point_end, stratum, ["organism", "drug"])
+        ctx = _context(
+            store, as_of, point_end - timedelta(days=window_days - 1), point_end, stratum, ["organism", "drug"], firsts
+        )
         for c in _cells(store, ctx, list(wards)):
             e = c.estimate
             out[c.ward].append({"week_start": week, "n": e.n, "r": c.r, "raw_rate": e.raw_rate,

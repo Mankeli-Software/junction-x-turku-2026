@@ -1,6 +1,7 @@
 import os
+import random
 import shutil
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -221,3 +222,21 @@ def test_concurrent_first_requests_load_the_dataset_once(monkeypatch):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert len(calls) == 1
+
+
+def test_first_isolates_by_previous_date_match_the_sort_and_dedup():
+    """The store picks first isolates by the previous isolate's date; it must equal the plain
+    sort-and-dedup of first_isolates() for any window and as_of."""
+    store = get_store()
+    rng = random.Random(7)
+    for _ in range(60):
+        as_of = date(2023, 10, 2) + timedelta(days=rng.randint(0, 1091))
+        start = as_of - timedelta(days=rng.choice([0, 6, 27, 364, 800]))
+        end = as_of - timedelta(days=rng.choice([0, 3, 40]))
+        if end < start:
+            continue
+        fast = store.first_isolates(as_of, "custom", start, end)
+        assert fast.equals(first_isolates(store.isolates(as_of), start, end)), (as_of, start, end)
+        firsts = store.first_in_window(store.sir["isolate_id"])
+        picked = set(store.sir.loc[firsts(start, end), "isolate_id"])
+        assert picked == set(fast["isolate_id"]) & set(store.sir["isolate_id"])
