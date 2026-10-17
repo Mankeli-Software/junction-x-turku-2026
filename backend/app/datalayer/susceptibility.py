@@ -94,11 +94,8 @@ def prior_start(start: date, end: date) -> date:
 
 def _stratum(store: DataStore, f: Filters) -> pd.DataFrame:
     """All S/I/R rows for the non-ward filters."""
-    d = store.sir
-    for col, val in [("specimen", f.specimen), ("organism", f.organism), ("antibiotic_code", f.drug),
-                     ("sex", f.sex), ("age_band", f.age_band), ("onset", f.onset)]:
-        if val is not None:
-            d = d[d[col] == val]
+    d = store.sir_rows(specimen=f.specimen, organism=f.organism, antibiotic_code=f.drug,
+                       sex=f.sex, age_band=f.age_band, onset=f.onset)
     return d.rename(columns={"antibiotic_code": "drug"})
 
 

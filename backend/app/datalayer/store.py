@@ -4,11 +4,13 @@ Results are cached in memory keyed on as_of. Nothing after as_of is visible in a
 view, so replaying an earlier date gives the numbers that date would have shown.
 """
 
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from app.config import settings
@@ -23,6 +25,9 @@ EXPECTED_COUNTS = {
 }
 
 FIRSTS_CACHE_SIZE = 128
+SIR_FILTER_COLUMNS = ("specimen", "organism", "antibiotic_code", "sex", "age_band", "onset")
+STRATA_CACHE_SIZE = 256
+STRATA_CACHE_MAX_ROWS = 30_000  # keeps the memo to a few tens of MB
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,38 @@ class DataStore:
         self._firsts: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
         sir_cols = ["isolate_id", "antibiotic_code", "result"]
         self.sir = self._frame.merge(tables.susceptibility[sir_cols], on="isolate_id", how="inner")
+        # Integer codes of the filter columns: comparing 172k small ints is far cheaper than strings.
+        self._sir_codes = {c: pd.factorize(self.sir[c]) for c in SIR_FILTER_COLUMNS}
+        self._strata: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
+        self._strata_lock = threading.Lock()
+
+    def sir_rows(self, **filters: str | None) -> pd.DataFrame:
+        """The S/I/R rows matching every given column value (None means no filter), as one slice.
+
+        Small results are remembered, so the 4-week and the 12-month estimate of one request, and
+        repeated requests, filter the table once. Treat the result as read-only.
+        """
+        wanted = {c: v for c, v in filters.items() if v is not None}
+        if not wanted:
+            return self.sir
+        key = tuple(sorted(wanted.items()))
+        with self._strata_lock:
+            if key in self._strata:
+                self._strata.move_to_end(key)
+                return self._strata[key]
+        mask = None
+        for col, val in wanted.items():
+            codes, uniques = self._sir_codes[col]
+            hit = uniques.get_indexer([val])[0]
+            m = codes == hit if hit >= 0 else np.zeros(len(codes), dtype=bool)
+            mask = m if mask is None else mask & m
+        rows = self.sir[mask]
+        if len(rows) <= STRATA_CACHE_MAX_ROWS:
+            with self._strata_lock:
+                self._strata[key] = rows
+                if len(self._strata) > STRATA_CACHE_SIZE:
+                    self._strata.popitem(last=False)
+        return rows
 
     def isolates(self, as_of: date) -> pd.DataFrame:
         """All isolates sampled on or before as_of (a slice of the sorted frame, not a copy)."""

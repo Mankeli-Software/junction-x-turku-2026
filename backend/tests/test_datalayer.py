@@ -10,6 +10,7 @@ from app.datalayer.store import (
     EXPECTED_COUNTS,
     DataStore,
     first_isolates,
+    get_store,
     load_tables,
     window_dates,
 )
@@ -149,3 +150,22 @@ def test_views_are_cached_per_as_of(store):
     a = store.first_isolates(date(2025, 6, 30), "28d")
     assert store.first_isolates(date(2025, 6, 30), "28d") is a
     assert store.first_isolates(date(2025, 7, 7), "28d") is not a
+
+
+def test_indexed_filter_matches_a_full_scan():
+    """store.sir_rows (integer codes, remembered) must return exactly what string comparisons would."""
+    store = get_store()
+    cases = [
+        {},
+        {"specimen": "urine", "organism": "Escherichia coli", "antibiotic_code": "TMP", "sex": "F"},
+        {"organism": "Escherichia coli", "age_band": "65+"},
+        {"onset": "hospital", "sex": "M"},
+        {"organism": "No such bug"},
+    ]
+    for filters in cases:
+        expected = store.sir
+        for col, val in filters.items():
+            expected = expected[expected[col] == val]
+        for _ in range(2):  # the second call is served from the memo
+            got = store.sir_rows(**filters)
+            assert got.index.equals(expected.index), filters
