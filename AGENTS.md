@@ -27,7 +27,7 @@ Rules that every number must follow:
 - `backend/app/` — FastAPI app (Python 3.12, pandas, scipy, pydantic v2).
   - `registry.py` — **declare each function once** with `@register(name, description, path, input_model, output_model)`; REST routes are generated from it, and the MCP server and the Claude agent tools will read the same registry (one set of functions, three callers). `GET /v1/functions` and `GET /v1/widgets` expose the registry and widget catalog as data.
   - `functions/` — handlers (`data.py`, `alerts.py`, `dashboard.py`). `models/` — request/response pydantic models. `vocab.py` — shared literals (wards, specimens, organisms, WHONET drug codes, age bands, windows, `MIN_ISOLATES`). `widgets/catalog.py` — widget names → parameter schemas; the AI picks widgets and params, it never writes a number.
-  - `datalayer/` — `store.py` (load CSVs, isolate frame, first-isolate rule, `as_of` cut, window dates), `derive.py` (age band, onset, week start), `susceptibility.py` (shrunk estimates, outbreak-inflation flag, weekly series). `shrinkage.py` — the shrinkage maths.
+  - `datalayer/` — `store.py` (load CSVs, isolate frame, first-isolate rule, `as_of` cut, window dates), `derive.py` (age band, onset, week start), `susceptibility.py` (shrunk estimates, outbreak-inflation flag, weekly series), `coverage.py` (organism mix, WISCA coverage per drug and pair, narrowest effective drug). `shrinkage.py` — the shrinkage maths.
   - `fixtures/` — canned responses that keep the contract stable while real implementations land.
   - `db.py` — tiny psycopg connection and `ping()`. `schema.sql` — Postgres schema.
   - `config.py` — settings from env / `backend/.env`; the dataset ships in the deploy zip.
@@ -38,7 +38,7 @@ Rules that every number must follow:
 
 Real (computed from the data): data layer (#5), `GET /v1/susceptibility` and `/v1/susceptibility/series` with shrinkage (#6), Azure infrastructure and CI (#3), Postgres schema, CSV loader and DB-backed `/healthz` (#11).
 
-Still fixtures behind the final contracts: `/v1/organisms`, `/v1/coverage` (#7 DATA-3), `/v1/alerts`, `/v1/alerts/detail`, `/v1/volume` (#8–#10 ALERT), `/v1/spreading`, `/v1/ward-links`, `/v1/dashboard`.
+Still fixtures behind the final contracts: `/v1/alerts`, `/v1/alerts/detail`, `/v1/volume` (#8–#10 ALERT), `/v1/spreading`, `/v1/ward-links`, `/v1/dashboard`.
 
 Not started: chat agent on the Claude API (#12), MCP server (#13), Flutter shell with replay slider and roles (#14), doctor/surveillance widgets (#15, #16), chat UI (#17), personal dashboard (#18). The app still reads the CSVs; Postgres holds a copy of the dataset (`backend/schema.sql`, loaded by `scripts/load_data.py --dsn ...`, idempotent) plus app tables such as `user_dashboards`. `/healthz` returns 503 unless the database answers (`backend/app/db.py`).
 

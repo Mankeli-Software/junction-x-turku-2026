@@ -56,3 +56,38 @@ Phenotype = Literal["ESBL", "MRSA", "VRE", "CPE"]
 
 # Minimum first isolates before a percentage is shown (alerts are never hidden).
 MIN_ISOLATES = 30
+
+# Drugs the data reports for urine samples only (antibiotics.csv reported_for).
+URINE_ONLY_DRUGS: frozenset[str] = frozenset({"MEC", "TMP", "NIT"})
+
+# Intrinsic resistance after EUCAST Expected Resistant Phenotypes v1.2, limited to the drugs in
+# the data. Such a pair is never covered, whatever the isolates in the data show.
+_GRAM_NEGATIVE_NEVER = {"VAN", "CLI"}
+INTRINSIC_RESISTANCE: dict[str, frozenset[str]] = {
+    "Escherichia coli": frozenset(_GRAM_NEGATIVE_NEVER),
+    "Klebsiella pneumoniae": frozenset({"AMP", *_GRAM_NEGATIVE_NEVER}),
+    "Klebsiella oxytoca": frozenset({"AMP", *_GRAM_NEGATIVE_NEVER}),
+    "Citrobacter freundii": frozenset({"AMP", "CXM", "FOX", *_GRAM_NEGATIVE_NEVER}),
+    "Proteus mirabilis": frozenset({"NIT", *_GRAM_NEGATIVE_NEVER}),
+    "Pseudomonas aeruginosa": frozenset(
+        {"AMP", "MEC", "CXM", "CRO", "FOX", "TMP", "NIT", *_GRAM_NEGATIVE_NEVER}
+    ),
+    "Enterococcus faecalis": frozenset({"MEC", "CXM", "CRO", "CAZ", "FOX", "CLI"}),
+    "Staphylococcus aureus": frozenset({"MEC", "CAZ"}),
+    "Staphylococcus saprophyticus": frozenset({"MEC", "CAZ"}),
+}
+
+# Spectrum order, narrowest first: the narrowest drug that covers is picked first. Drugs not
+# listed (the FOX screen; AMP, CAZ, CLI and VAN for urine) are not offered for that specimen.
+URINE_SPECTRUM = ("NIT", "MEC", "TMP", "CXM", "CIP", "CRO", "TZP", "MEM")
+SYSTEMIC_SPECTRUM = ("AMP", "CLI", "CXM", "CIP", "CRO", "CAZ", "TZP", "MEM", "VAN")
+MIXED_SPECTRUM = ("NIT", "MEC", "TMP", "AMP", "CLI", "CXM", "CIP", "CRO", "CAZ", "TZP", "MEM", "VAN")
+SPECTRUM_ORDER: dict[str | None, tuple[str, ...]] = {
+    "urine": URINE_SPECTRUM,
+    "blood": SYSTEMIC_SPECTRUM,
+    "wound": SYSTEMIC_SPECTRUM,
+    None: MIXED_SPECTRUM,
+}
+
+# Coverage target: the lower bound of the range must reach it.
+COVERAGE_TARGET = 0.90

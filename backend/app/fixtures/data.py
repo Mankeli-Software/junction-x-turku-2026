@@ -5,11 +5,6 @@ from datetime import date, timedelta
 from app.datalayer.store import window_dates
 from app.models.common import Estimate, WindowOut
 from app.models.data import (
-    CoverageOut,
-    CoverageWindowSet,
-    OrganismMixOut,
-    OrganismShare,
-    RegimenCoverage,
     SeriesOut,
     SirCounts,
     SusceptibilityOut,
@@ -35,42 +30,6 @@ def estimate(value: float, n: int, level: str = "ward") -> Estimate:
         prior_level=level,  # type: ignore[arg-type]
         prior_weight=round(20 / (20 + n), 3),
         small_sample=n < MIN_ISOLATES,
-    )
-
-
-def organism_mix(as_of: date, window: WindowOut, ward, specimen) -> OrganismMixOut:
-    return OrganismMixOut(
-        window=window,
-        ward=ward,
-        specimen=specimen or "urine",
-        n_first_isolates=48,
-        organisms=[
-            OrganismShare(organism="Escherichia coli", share=0.57, n=27),
-            OrganismShare(organism="Klebsiella pneumoniae", share=0.11, n=5),
-            OrganismShare(organism="Enterococcus faecalis", share=0.32, n=16),
-        ],
-    )
-
-
-def _coverage_set(window: WindowOut, n: int) -> CoverageWindowSet:
-    return CoverageWindowSet(
-        window=window,
-        n_first_isolates=n,
-        options=[
-            RegimenCoverage(regimen=["NIT"], coverage=estimate(0.91, n), covers_target=True),
-            RegimenCoverage(regimen=["CRO"], coverage=estimate(0.88, n), covers_target=False),
-            RegimenCoverage(regimen=["MEM"], coverage=estimate(0.99, n), covers_target=True),
-        ],
-        narrowest_effective=["NIT"],
-    )
-
-
-def coverage(recent: WindowOut, annual: WindowOut, ward, specimen) -> CoverageOut:
-    return CoverageOut(
-        ward=ward,
-        specimen=specimen or "urine",
-        recent=_coverage_set(recent, 48),
-        annual=_coverage_set(annual, 520),
     )
 
 

@@ -1,13 +1,18 @@
 from datetime import timedelta
 
+from app.datalayer import coverage as cov
 from app.datalayer import susceptibility as susc
 from app.datalayer.store import get_store, window_dates
 from app.fixtures import data as fx
+from app.models.common import WindowOut
 from app.models.data import (
     CoverageOut,
     CoverageQuery,
+    CoverageWindowSet,
     OrganismMixOut,
     OrganismMixQuery,
+    OrganismShare,
+    RegimenCoverage,
     SeriesOut,
     SeriesQuery,
     SirCounts,
@@ -18,7 +23,7 @@ from app.models.data import (
     WeeklyPoint,
 )
 from app.registry import register
-from app.vocab import INFECTION_TO_SPECIMEN
+from app.vocab import INFECTION_TO_SPECIMEN, MIN_ISOLATES, SPECTRUM_ORDER
 
 PNEUMONIA_NOTE = "Pneumonia is not in this data: there are no respiratory samples."
 
@@ -36,6 +41,14 @@ def _win(q):
     return fx.window_out(q.window, q.as_of, q.date_from, q.date_to)
 
 
+def _profile(q) -> susc.Filters:
+    return susc.Filters(ward=q.ward, specimen=_specimen(q), sex=q.sex, age_band=q.age_band, onset=q.onset)
+
+
+def _pneumonia(q) -> bool:
+    return getattr(q, "infection_type", None) == "pneumonia"
+
+
 @register(
     "get_organisms",
     "Organism mix (WISCA weights) for a patient profile and window.",
@@ -44,9 +57,46 @@ def _win(q):
     OrganismMixOut,
 )
 def get_organisms(q: OrganismMixQuery) -> OrganismMixOut:
-    out = fx.organism_mix(q.as_of, _win(q), q.ward, _specimen(q))
-    out.note = _note(q)
+    specimen = _specimen(q)
+    window = _win(q)
+    out = OrganismMixOut(window=window, ward=q.ward, specimen=specimen, n_first_isolates=0, note=_note(q), organisms=[])
+    if _pneumonia(q):
+        return out
+    mix = cov.organism_mix(get_store(), q.as_of, window.date_from, window.date_to, _profile(q))
+    by_organism: dict[str, list[float]] = {}
+    for c in mix.cells:
+        share_n = by_organism.setdefault(c.organism, [0.0, 0])
+        share_n[0] += c.share
+        share_n[1] += c.n
+    out.n_first_isolates = mix.n
+    out.organisms = [
+        OrganismShare(organism=o, share=min(1.0, sh), n=int(n))
+        for o, (sh, n) in sorted(by_organism.items(), key=lambda kv: -kv[1][0])
+    ]
+    if mix.n < MIN_ISOLATES:
+        out.note = " ".join(filter(None, [out.note, LEAN_NOTE.format(n=mix.n, w=round(100 * mix.prior_weight))]))
     return out
+
+
+LEAN_NOTE = (
+    "Only {n} first isolates in this window: the mix leans {w}% on the hospital mix of the last 12 months."
+)
+
+
+def _coverage_window(q: CoverageQuery, window: WindowOut) -> CoverageWindowSet:
+    result = cov.coverage_set(
+        get_store(), q.as_of, window.date_from, window.date_to, _profile(q), SPECTRUM_ORDER[_specimen(q)],
+        q.max_regimen_size,
+    )
+    return CoverageWindowSet(
+        window=window,
+        n_first_isolates=result.n,
+        options=[
+            RegimenCoverage(regimen=list(r.regimen), coverage=r.coverage, covers_target=r.covers_target)  # type: ignore[arg-type]
+            for r in result.options
+        ],
+        narrowest_effective=list(result.narrowest) if result.narrowest else None,  # type: ignore[arg-type]
+    )
 
 
 @register(
@@ -57,10 +107,15 @@ def get_organisms(q: OrganismMixQuery) -> OrganismMixOut:
     CoverageOut,
 )
 def get_coverage(q: CoverageQuery) -> CoverageOut:
-    annual = fx.window_out("365d", q.as_of, None, None)
-    out = fx.coverage(_win(q), annual, q.ward, _specimen(q))
-    out.note = _note(q)
-    return out
+    recent, annual = _win(q), fx.window_out("365d", q.as_of, None, None)
+    note = _note(q)
+    if _pneumonia(q):
+        empty = lambda w: CoverageWindowSet(window=w, n_first_isolates=0, options=[], narrowest_effective=None)
+        return CoverageOut(ward=q.ward, specimen=_specimen(q), note=note, recent=empty(recent), annual=empty(annual))
+    return CoverageOut(
+        ward=q.ward, specimen=_specimen(q), note=note,
+        recent=_coverage_window(q, recent), annual=_coverage_window(q, annual),
+    )
 
 
 def _filters(q, ward=None) -> susc.Filters:

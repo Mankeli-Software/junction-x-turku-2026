@@ -141,12 +141,8 @@ def hospital_rate(r_h: int, n_h: int) -> float:
     return (r_h + 0.5) / (n_h + 1)
 
 
-def estimate(r: int, n: int, ward_type: tuple[int, int] | None, hospital: tuple[int, int], kappa: float) -> Estimate:
-    """Shrunk resistance with range, prior weight and the prior level that leans most.
-
-    ward_type is (R, n) of the other wards of the same type, or None for a pooled hospital row,
-    whose prior is the hospital rate itself.
-    """
+def _prior(n: int, ward_type: tuple[int, int] | None, hospital: tuple[int, int], kappa: float) -> tuple[float, float, str]:
+    """Beta prior (a, b) of the resistance rate and the level that leans most."""
     p_h = hospital_rate(*hospital)
     if ward_type is None:
         prior, level = p_h, "hospital"
@@ -156,7 +152,16 @@ def estimate(r: int, n: int, ward_type: tuple[int, int] | None, hospital: tuple[
         w_ward = n / (n + kappa)
         w_type = (1 - w_ward) * n_t / (n_t + kappa)
         level = max([("ward", w_ward), ("ward_type", w_type), ("hospital", 1 - w_ward - w_type)], key=lambda x: x[1])[0]
-    a, b = prior * kappa, (1 - prior) * kappa
+    return prior * kappa, (1 - prior) * kappa, level
+
+
+def estimate(r: int, n: int, ward_type: tuple[int, int] | None, hospital: tuple[int, int], kappa: float) -> Estimate:
+    """Shrunk resistance with range, prior weight and the prior level that leans most.
+
+    ward_type is (R, n) of the other wards of the same type, or None for a pooled hospital row,
+    whose prior is the hospital rate itself.
+    """
+    a, b, level = _prior(n, ward_type, hospital, kappa)
     low, high = _interval(r, n, a, b)
     return Estimate(
         value=shrunk_rate(r, n, a, b), low=low, high=high, n=int(n), prior_level=level,  # type: ignore[arg-type]
@@ -195,13 +200,13 @@ def _rn(c: Counts | None) -> tuple[int, int]:
     return (c[2], c[3]) if c else (0, 0)
 
 
-def _cells(store: DataStore, ctx: _Context, wards: list[str | None]) -> list[Cell]:
+def _cells(store: DataStore, ctx: _Context, wards: list[str | None], all_keys: bool = False) -> list[Cell]:
     ward_types = dict(zip(store.tables.wards["ward_code"], store.tables.wards["ward_type"]))
     cells: list[Cell] = []
     for ward in wards:
         win_counts = _counts(ctx.win[ctx.win["ward_code"] == ward] if ward else ctx.win, ctx.group_cols)
         keys = set(win_counts)
-        if ward:  # also show cells the ward had no isolates for, resting on the prior
+        if ward or all_keys:  # also show cells with no isolates in the window, resting on the prior
             keys |= set(ctx.ann_hosp)
         for key in keys:
             hosp = _rn(ctx.ann_hosp.get(key))
@@ -213,9 +218,11 @@ def _cells(store: DataStore, ctx: _Context, wards: list[str | None]) -> list[Cel
                 ward_type = (r_t - r_w, n_t - n_w)
             s_, i_, r_, n_ = win_counts.get(key, (0, 0, 0, 0))
             named = dict(zip(ctx.group_cols, key))
+            a, b, _ = _prior(n_, ward_type, hosp, kappa)
             cells.append(
                 Cell(ward=ward, specimen=named.get("specimen"), organism=named["organism"], drug=named["drug"],
-                     s=s_, i=i_, r=r_, estimate=estimate(r_, n_, ward_type, hosp, kappa))
+                     s=s_, i=i_, r=r_, estimate=estimate(r_, n_, ward_type, hosp, kappa),
+                     extra={"posterior": (r_ + a, n_ - r_ + b)})  # Beta of the resistance rate
             )
     cells.sort(key=lambda c: (-c.estimate.n, c.organism, c.drug))
     return cells
@@ -223,14 +230,16 @@ def _cells(store: DataStore, ctx: _Context, wards: list[str | None]) -> list[Cel
 
 def estimate_cells(
     store: DataStore, as_of: date, start: date, end: date, f: Filters, group_cols: list[str] = CELL,
-    wards: list[str | None] | None = None,
+    wards: list[str | None] | None = None, stratum: pd.DataFrame | None = None, all_keys: bool = False,
 ) -> list[Cell]:
     """Estimates per ward and group_cols for the window start..end.
 
     `wards` lists the wards to estimate (None is the pooled hospital); default is [f.ward].
+    `stratum` replaces the S/I/R rows of the filters (coverage adds regimen rows); `all_keys`
+    also returns the cells that have isolates only in the prior period.
     """
-    ctx = _context(store, as_of, start, end, _stratum(store, f), group_cols)
-    return _cells(store, ctx, wards if wards is not None else [f.ward])
+    ctx = _context(store, as_of, start, end, stratum if stratum is not None else _stratum(store, f), group_cols)
+    return _cells(store, ctx, wards if wards is not None else [f.ward], all_keys)
 
 
 def weekly_series(
