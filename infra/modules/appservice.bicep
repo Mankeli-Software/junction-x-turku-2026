@@ -41,7 +41,7 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       healthCheckPath: '/healthz'
-      appCommandLine: 'gunicorn -k uvicorn.workers.UvicornWorker -w 2 -t 0 app.main:app --bind 0.0.0.0:8000'
+      appCommandLine: 'gunicorn -k uvicorn.workers.UvicornWorker -w 2 -t 0 --preload app.main:app --bind 0.0.0.0:8000'
       appSettings: [
         { name: 'WEBSITES_PORT', value: '8000' }
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'true' }
@@ -55,6 +55,10 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AS_OF_DEFAULT', value: asOfDefault }
         // The dataset is read from Postgres, not from files (the deploy zip has no CSVs).
         { name: 'DATA_SOURCE', value: 'postgres' }
+        // Load the data and run the screen queries once before the workers fork (gunicorn --preload).
+        // The port opens only after that, so give the container more than the default 230 s to start.
+        { name: 'PRELOAD_WARM', value: 'true' }
+        { name: 'WEBSITES_CONTAINER_START_TIME_LIMIT', value: '600' }
         // One instance only; the scheduler is guarded by a Postgres advisory lock anyway.
         { name: 'SCHEDULER_ENABLED', value: 'true' }
       ]

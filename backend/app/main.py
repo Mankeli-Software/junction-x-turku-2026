@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import db
+from app import db, warmup
 from app.agent.route import router as agent_router
 from app.config import settings
 from app.functions import alerts, dashboard, data  # noqa: F401  (registers functions)
@@ -14,14 +14,19 @@ from app.widgets.catalog import catalog_schemas
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # The alert signals take about 12 s to compute once; do it in the background at startup.
-    if settings.warm_up:
+    # The alert signals take about 12 s to compute once; do it in the background at startup, unless the
+    # preload below already did everything before the workers forked.
+    if settings.warm_up and warmup.result is None:
         from app.datalayer import alerts as alert_engine
         from app.datalayer.store import get_store
 
         threading.Thread(target=lambda: alert_engine.warm_up(get_store()), daemon=True, name="alert-warm-up").start()
     yield
 
+
+if settings.preload_warm:
+    # Under `gunicorn --preload` this runs once in the master process; the workers inherit the caches.
+    warmup.run()
 
 app = FastAPI(title="AMRight API", version="0.1.0", lifespan=lifespan)
 
@@ -62,6 +67,7 @@ def data_status(response: Response):
         "ok": all(v["expected"] == v["actual"] for v in tables.values()),
         "tables": tables,
         "signals": signals.cache_status(get_store()),
+        "warm_up": warmup.result,
     }
 
 

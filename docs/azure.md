@@ -67,4 +67,6 @@ scripts/teardown.sh demo      # deletes every resource tagged project=aei, env=d
 
 App Service plan: Basic B3 (4 vCPU, 7 GB, about $52 a month at list price in Norway East; B1 was $13, B2 $26). Billed by the hour, so scale it down with `sku` in `infra/modules/appservice.bicep` when the demo is over.
 
+Startup: `gunicorn --preload` with `PRELOAD_WARM=true` loads the dataset from Postgres and runs the screen queries (`backend/app/warmup.py`) once in the master process, then forks two workers that share the result. The port opens after that (about a minute), so `WEBSITES_CONTAINER_START_TIME_LIMIT` is 600. `/v1/data-status` shows `warm_up`.
+
 No login (the API key only protects non-browser clients), public endpoints, one App Service instance, Postgres open to Azure services plus listed IPs, synthetic data only. Real data would need private networking and authentication.

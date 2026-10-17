@@ -136,7 +136,8 @@ jobs:
           for t, v in d["tables"].items():
               print(f"{t:<16}{v['expected']:>10}{v['actual']:>10}")
           print("signals:", d["signals"])
-          ok = d["ok"] and d["signals"]["source"] == "precomputed"  # computing them on the small plan takes minutes
+          print("warm-up:", d.get("warm_up"))
+          ok = d["ok"] and d["signals"]["source"] == "precomputed" and bool(d.get("warm_up"))  # caches filled before the first request
           sys.exit(0 if ok else 1)
           PY
             fi

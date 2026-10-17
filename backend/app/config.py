@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:8080"
     as_of_default: date = date(2026, 9, 27)
     warm_up: bool = True  # compute the alert signals in the background at startup
+    # Run the screen queries once at import, before gunicorn forks its workers (use with --preload).
+    preload_warm: bool = False
+    warm_budget_seconds: int = 120
     # Chat agent (PLAT-2). The key comes from Key Vault in Azure; without it the agent route returns 503.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5-5"
