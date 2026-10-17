@@ -16,8 +16,10 @@ fi
 [[ -n "$KEY" ]] || { echo "Empty key" >&2; exit 1; }
 
 # Pass the value through a file descriptor so it never appears in the process list.
-az keyvault secret set --vault-name "$VAULT" -n anthropic-api-key \
-  --file /dev/stdin --encoding utf-8 --query id -o tsv <<<"$KEY" >/dev/null
+# printf, not a here-string: `<<<` appends a newline, which ends up in the secret and makes the key
+# unusable as an HTTP header ("connection error" from the SDK).
+printf '%s' "$KEY" | az keyvault secret set --vault-name "$VAULT" -n anthropic-api-key \
+  --file /dev/stdin --encoding utf-8 --query id -o tsv >/dev/null
 echo "Stored anthropic-api-key in $VAULT."
 
 # Key Vault references are cached for up to a day; restart to pick the value up now.

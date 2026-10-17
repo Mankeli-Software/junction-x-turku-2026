@@ -242,8 +242,10 @@ async def run(req: AgentRequest, llm: LLMClient) -> AsyncIterator[Event]:
     except anthropic.APITimeoutError:
         ok = False
         yield "error", {"code": "timeout", "message": "The AI took too long to answer."}
-    except anthropic.APIConnectionError:
+    except anthropic.APIConnectionError as e:
         ok = False
+        # Only the type of the cause: the text of a header error contains the header, which is the API key.
+        log.error("agent %s: connection error (cause: %s)", request_id, type(e.__cause__).__name__)
         yield "error", {"code": "unreachable", "message": "Could not reach the AI service."}
     except anthropic.APIStatusError as e:
         ok = False

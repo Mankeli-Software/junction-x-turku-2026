@@ -284,3 +284,32 @@ def test_a_ping_comment_is_sent_while_the_model_is_quiet(monkeypatch):
     chunks = asyncio.run(go())
     assert route.PING in chunks and chunks[-1].startswith("event: done")
     assert chunks.index(route.PING) > 0
+
+
+def test_a_key_stored_with_a_trailing_newline_still_works():
+    """Key Vault returned the key with a newline once; the SDK called that a connection error."""
+    from app.config import Settings
+
+    assert Settings(anthropic_api_key="sk-ant-abc\n").anthropic_api_key == "sk-ant-abc"
+    assert Settings(anthropic_api_key="  sk-ant-abc \r\n").anthropic_api_key == "sk-ant-abc"
+
+
+def test_a_connection_error_never_logs_the_key(caplog):
+    """The SDK's header error carries the header value, which is the API key."""
+    secret = "sk-ant-THIS-MUST-NOT-APPEAR"
+    cause = RuntimeError(f"Illegal header value b'{secret}'")
+    error = anthropic.APIConnectionError(request=httpx2.Request("POST", "http://x"))
+    error.__cause__ = cause
+
+    class Broken:
+        async def turn(self, **kw):
+            raise error
+            yield  # pragma: no cover
+
+    async def go():
+        return [e async for e in loop.run(req(), Broken())]
+
+    with caplog.at_level("INFO", logger="uvicorn.error"):
+        events = asyncio.run(go())
+    assert secret not in caplog.text and secret not in json.dumps(events)
+    assert "RuntimeError" in caplog.text  # the type is logged, which is enough to find the cause

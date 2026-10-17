@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DATASET = "data/synthetic_microbiology_dataset"
@@ -29,6 +30,13 @@ class Settings(BaseSettings):
     agent_fake: bool = False  # stream a fixed screen from a scripted client, no API call
     agent_fallbacks: bool = True  # server-side refusal fallback beta (works with streaming; set false if the API rejects it)
     data_dir: str = _default_data_dir()
+
+    @field_validator("anthropic_api_key")
+    @classmethod
+    def _strip_key(cls, v: str) -> str:
+        # A key copied or stored with a trailing newline cannot be sent in an HTTP header: the SDK
+        # then reports a connection error that looks like a network problem.
+        return v.strip()
 
     @property
     def cors_origin_list(self) -> list[str]:
