@@ -22,6 +22,28 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    // On a short wide window Continue moves up beside the title, so nothing needs scrolling.
+    final side = context.isShort && context.screenWidth >= 1100;
+    final title = ColumnGap([
+      Text('Sign in ✦ Demo', style: AmrText.body(15)),
+      Text('Who is using it today?', style: AmrText.display(context)),
+      ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: context.isShort ? 900 : 620),
+        child: Text(
+          'Pick your profile. There is no password in this demo. Your profile sets your '
+          'ward and what you see first, and you can switch from the top bar anytime.',
+          style: AmrText.lede,
+        ),
+      ),
+    ], gap: context.vfit(18, min: 10));
+    final button = AmrButton(
+      label: 'Continue as ${_picked.name}',
+      variant: AmrButtonVariant.primary,
+      size: AmrButtonSize.xxl,
+      trailing: const Text('→'),
+      onPressed: _continue,
+    );
+    final note = Text('Synthetic data only. Not for clinical decisions.', style: AmrText.body(14));
     return AppPage(
       glowHeight: 560,
       topBarTrailing: context.isCompact ? const SizedBox.shrink() : const _PocPill(),
@@ -29,18 +51,17 @@ class _LoginPageState extends State<LoginPage> {
         top: fluid(context, 40, 7, 96),
         gap: AmrSpace.x40,
         children: [
-          ColumnGap([
-            Text('Sign in ✦ Demo', style: AmrText.body(15)),
-            Text('Who is using it today?', style: AmrText.display(context)),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 620),
-              child: Text(
-                'Pick your profile. There is no password in this demo. Your profile sets your '
-                'ward and what you see first, and you can switch from the top bar anytime.',
-                style: AmrText.lede,
-              ),
-            ),
-          ], gap: AmrSpace.x18),
+          if (side)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(child: title),
+                const SizedBox(width: 24),
+                ColumnGap([button, note], gap: 10, crossAxisAlignment: CrossAxisAlignment.end),
+              ],
+            )
+          else
+            title,
           AutoGrid(
             minItemWidth: 340,
             children: [
@@ -56,21 +77,13 @@ class _LoginPageState extends State<LoginPage> {
                 ),
             ],
           ),
-          Wrap(
-            spacing: 28,
-            runSpacing: 16,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              AmrButton(
-                label: 'Continue as ${_picked.name}',
-                variant: AmrButtonVariant.primary,
-                size: AmrButtonSize.xxl,
-                trailing: const Text('→'),
-                onPressed: _continue,
-              ),
-              Text('Synthetic data only. Not for clinical decisions.', style: AmrText.body(14)),
-            ],
-          ),
+          if (!side)
+            Wrap(
+              spacing: 28,
+              runSpacing: 16,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [button, note],
+            ),
         ],
       ),
     );
@@ -116,20 +129,22 @@ class _GroupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final users = demoUsers.where((u) => u.group == group);
+    final short = context.isShort;
     return AmrCard(
       tone: AmrCardTone.accent,
+      padding: EdgeInsets.all(short ? 22 : 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: Icon(_groupIcon(group), size: 40, color: AmrColors.ink),
+            child: Icon(_groupIcon(group), size: short ? 32 : 40, color: AmrColors.ink),
           ),
           const SizedBox(height: 10),
           Text(group.label, style: AmrText.body(22, weight: FontWeight.w500)),
           const SizedBox(height: 10),
           Text(group.description, style: AmrText.body(15, height: 1.45)),
-          const SizedBox(height: 18),
+          SizedBox(height: short ? 14 : 18),
           for (final u in users) ...[
             _UserButton(
               user: u,
@@ -169,7 +184,7 @@ class _UserButton extends StatelessWidget {
         builder: (_, s) => AnimatedContainer(
           duration: AmrMotion.base,
           curve: AmrMotion.curve,
-          constraints: const BoxConstraints(minHeight: 60),
+          constraints: BoxConstraints(minHeight: context.isShort ? 52 : 60),
           padding: const EdgeInsets.fromLTRB(20, 8, 10, 8),
           decoration: BoxDecoration(
             color: selected

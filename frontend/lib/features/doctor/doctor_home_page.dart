@@ -29,30 +29,11 @@ class DoctorHomePage extends StatelessWidget {
     return BlocProvider(
       create: (_) => PatientFormCubit(homeWard: ward, initial: initial),
       child: AppPage(
-        phoneBar: const _ShowWhatWorksBar(),
         body: PageBody(
           top: fluid(context, 32, 5, 72),
           gap: AmrSpace.x36,
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: ColumnGap(
-                  [
-                    Breadcrumb(['Home', ward?.label ?? 'All wards']),
-                    Text('Who is your patient?', style: AmrText.display(context)),
-                    AskField(
-                      hint: 'e.g. woman over 75, urinary infection, on the ward for 3 days',
-                      size: AskFieldSize.large,
-                      onSubmit: actions.ask,
-                    ),
-                  ],
-                  gap: AmrSpace.x22,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                ),
-              ),
-            ),
+            _Header(ward: ward, onAsk: actions.ask),
             PatientForm(homeWard: ward),
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -134,18 +115,44 @@ class _WardQuestions extends StatelessWidget {
   }
 }
 
-/// Phone: "Show what works" stays at the bottom while the form scrolls.
-class _ShowWhatWorksBar extends StatelessWidget {
-  const _ShowWhatWorksBar();
+/// "Home ✦ Urology", "Who is your patient?" and the free-text field. On a short wide window
+/// the field sits beside the title (as on the Hygiene page) so the form fits without scrolling.
+class _Header extends StatelessWidget {
+  const _Header({required this.ward, required this.onAsk});
+
+  final Ward? ward;
+  final ValueChanged<String> onAsk;
 
   @override
-  Widget build(BuildContext context) => AmrButton(
-    label: 'Show what works',
-    variant: AmrButtonVariant.primary,
-    size: AmrButtonSize.xxl,
-    expand: true,
-    trailing: const Text('→'),
-    onPressed: () =>
-        context.read<CatalogActions>().openAnswer(context.read<PatientFormCubit>().state.profile),
-  );
+  Widget build(BuildContext context) {
+    final title = ColumnGap([
+      Breadcrumb(['Home', ward?.label ?? 'All wards']),
+      Text('Who is your patient?', style: AmrText.display(context)),
+    ], gap: context.vfit(22, min: 10));
+    const hint = 'e.g. woman over 75, urinary infection, on the ward for 3 days';
+    if (context.isShort && context.screenWidth >= 1100) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(child: title),
+          const SizedBox(width: 24),
+          SizedBox(
+            width: 480,
+            child: AskField(hint: hint, onSubmit: onAsk),
+          ),
+        ],
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: ColumnGap(
+          [title, AskField(hint: hint, size: AskFieldSize.large, onSubmit: onAsk)],
+          gap: context.vfit(22, min: 12),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+        ),
+      ),
+    );
+  }
 }

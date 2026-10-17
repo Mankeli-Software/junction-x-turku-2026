@@ -69,7 +69,10 @@ class AlertBannerView extends StatelessWidget {
       onTap: () => context.read<CatalogActions>().openAlert(alert.alertId),
       child: ColumnGap([
         DotLabel(home ? 'On your ward now' : 'Active alert ${alert.onWhere}'),
-        Text(home ? title : alert.summary, style: AmrText.title(home ? 26 : 24)),
+        Text(
+          home ? title : alert.summary,
+          style: AmrText.title(home ? 26 : (context.isShort ? 20 : 24)),
+        ),
         Text(
           home ? 'See what it means for your patients' : 'Open the alert',
           style: AmrText.body(15).copyWith(decoration: TextDecoration.underline),

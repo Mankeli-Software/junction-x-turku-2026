@@ -14,6 +14,20 @@ extension AmrResponsive on BuildContext {
 
   /// Page side gutter: clamp(16px, 4vw, 64px).
   double get gutter => fluid(this, 16, 4, 64);
+
+  double get screenHeight => MediaQuery.sizeOf(this).height;
+
+  /// A laptop-height window (under 1000px tall): layouts tighten so the main content fits
+  /// without scrolling. Tall windows keep the design's exact spacing.
+  bool get isShort => screenHeight < 1000;
+
+  /// Scales a vertical design spacing down on short windows: full size from 1000px tall,
+  /// half size at 640px and below, never under [min].
+  double vfit(double v, {double min = 0}) {
+    final f = ((screenHeight - 640) / 360).clamp(0.5, 1.0);
+    final out = v * f;
+    return out < min ? min : out;
+  }
 }
 
 /// CSS `grid-template-columns: repeat(auto-fit, minmax(min(minWidth, 100%), 1fr))`.

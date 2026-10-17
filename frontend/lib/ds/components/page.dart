@@ -65,6 +65,8 @@ class PageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = context.gutter;
+    final top = context.vfit(this.top, min: 12);
+    final gap = context.vfit(this.gap, min: 16);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: AmrBreakpoints.maxContent),

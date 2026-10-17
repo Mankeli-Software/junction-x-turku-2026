@@ -87,7 +87,10 @@ class TopBar extends StatelessWidget {
       );
     }
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: context.gutter, vertical: 22),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.gutter,
+        vertical: context.vfit(22, min: 12),
+      ),
       child: Row(
         children: [
           Expanded(

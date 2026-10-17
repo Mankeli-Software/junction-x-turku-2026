@@ -13,7 +13,8 @@ abstract final class AmrColors {
   static const lavenderPale = Color(0xFFECEBFA); // tags, unselected tokens
   static const line = Color(0xFFE7E6F3); // hairlines, empty step dots
   static const periwinkle = Color(0xFFA6A1F9); // I in S/I/R, quiet bars, dashed borders
-  static const violet = Color(0xFF635BF1);
+  static const violet = Color(0xFF635BF1); // the "Show what works" call to action
+  static const violetHover = Color(0xFF5149E3);
   static const mist = Color(0xFFE2E1F0); // "other" in stacked shares
   static const hairline = Color(0xFFF0EFF8); // row dividers inside white chat cards
 

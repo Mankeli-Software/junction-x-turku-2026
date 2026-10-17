@@ -30,14 +30,26 @@ void main() {
     await tester.tap(find.text('Continue as Aino Virtanen'));
     await tester.pumpAndSettle();
     expect(find.text('Who is your patient?'), findsOneWidget);
-    expect(find.text('Step 4 of 5'), findsOneWidget);
+    expect(find.text('Step 1 of 5'), findsOneWidget);
+    // No answer button until every word is set.
+    expect(find.text('Show what works'), findsNothing);
 
-    // Pick "Sepsis" with the keyboard: it moves on to the last word.
-    await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
-    await tester.pumpAndSettle();
-    expect(find.text('Step 5 of 5'), findsOneWidget);
+    // Five picks with the keyboard: woman, 75+, Urology, sepsis, in hospital.
+    for (final key in [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit2,
+    ]) {
+      await tester.sendKeyEvent(key);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('All set'), findsOneWidget);
+    expect(find.text('Show what works'), findsOneWidget);
 
-    await tester.tap(find.text('Show what works'));
+    // Enter shows the answer.
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(find.text('Selected patient'), findsOneWidget);
     expect(find.text('All antibiotics'), findsOneWidget);
