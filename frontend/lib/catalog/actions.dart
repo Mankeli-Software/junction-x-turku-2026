@@ -17,4 +17,13 @@ abstract interface class CatalogActions {
   /// Hand a question to the chat; with [patient], the chat answers about that patient
   /// (follow-ups from an answer page).
   void ask(String question, {PatientProfile? patient});
+
+  /// Research Explore with these `ResistanceTrend` params as its filters.
+  void openResearch([Json params = const {}]);
+
+  /// Infection control: resistant bacteria on every ward.
+  void openInfectionControl();
+
+  /// The lab's alert inbox.
+  void openLab();
 }

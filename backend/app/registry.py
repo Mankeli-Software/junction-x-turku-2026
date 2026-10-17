@@ -22,7 +22,7 @@ class Function:
     input_model: type[BaseModel]
     output_model: type[BaseModel]
     handler: Callable[[BaseModel], BaseModel]
-    method: Literal["GET", "PUT"] = "GET"
+    method: Literal["GET", "PUT", "DELETE"] = "GET"
 
     def input_schema(self) -> dict:
         return self.input_model.model_json_schema()
@@ -74,7 +74,7 @@ def register(
     path: str,
     input_model: type[BaseModel],
     output_model: type[BaseModel],
-    method: Literal["GET", "PUT"] = "GET",
+    method: Literal["GET", "PUT", "DELETE"] = "GET",
     cache: bool = True,
 ):
     """Decorator: declare a function once. Reads of the dataset are remembered; pass cache=False
@@ -107,7 +107,7 @@ def build_router(prefix: str = "/v1") -> APIRouter:
 
 def _endpoint(fn: Function):
     # No `from __future__ import annotations` here: the annotations are built from fn.
-    if fn.method == "GET":
+    if fn.method in ("GET", "DELETE"):
 
         def endpoint(params: Annotated[fn.input_model, Query()]):  # type: ignore[name-defined]
             return fn.handler(params)

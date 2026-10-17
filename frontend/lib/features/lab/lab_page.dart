@@ -230,10 +230,7 @@ class _PhoneInbox extends StatelessWidget {
                 return ColumnGap(
                   [
                     Text('Home $sparkle Alerts', style: AmrText.body(13)),
-                    Text(
-                      'Alerts to review',
-                      style: AmrText.sora(40, em: -0.035, height: 1.02),
-                    ),
+                    Text('Alerts to review', style: AmrText.sora(40, em: -0.035, height: 1.02)),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       clipBehavior: Clip.none,

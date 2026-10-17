@@ -29,7 +29,7 @@ def test_get_route_serves_valid_fixture(name):
 
 
 def test_every_function_is_covered():
-    assert set(REGISTRY) - set(SAMPLES) == {"put_dashboard"}
+    assert set(REGISTRY) - set(SAMPLES) == {"put_dashboard", "reset_dashboard"}
 
 
 def test_put_dashboard_roundtrip():

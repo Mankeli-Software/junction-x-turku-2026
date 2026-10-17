@@ -431,6 +431,15 @@ class _InChatActions implements CatalogActions {
 
   @override
   void openAlert(String alertId) => _app.openAlert(alertId);
+
+  @override
+  void openResearch([Json params = const {}]) => _app.openResearch(params);
+
+  @override
+  void openInfectionControl() => _app.openInfectionControl();
+
+  @override
+  void openLab() => _app.openLab();
 }
 
 /// Before the first question: what the chat does and what people in this role ask.

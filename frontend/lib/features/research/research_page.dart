@@ -25,11 +25,14 @@ import 'research_table.dart';
 /// Researcher · Explore: filters on the left, a chart made from them (or from words), the table
 /// of periods × groups, and export.
 class ResearchPage extends StatelessWidget {
-  const ResearchPage({super.key});
+  const ResearchPage({super.key, this.initial});
+
+  /// Filters to start from (a pinned trend opened here); the defaults otherwise.
+  final ResearchFilters? initial;
 
   @override
   Widget build(BuildContext context) =>
-      BlocProvider(create: (_) => ResearchCubit(), child: const _ResearchView());
+      BlocProvider(create: (_) => ResearchCubit(initial), child: const _ResearchView());
 }
 
 class _ResearchView extends StatefulWidget {

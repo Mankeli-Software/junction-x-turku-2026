@@ -22,7 +22,8 @@ class ResearchState extends Equatable {
 
 /// Explore: the filters and the two confirmations. The numbers load through QueryView.
 class ResearchCubit extends Cubit<ResearchState> {
-  ResearchCubit() : super(const ResearchState());
+  ResearchCubit([ResearchFilters? initial])
+    : super(ResearchState(filters: initial ?? const ResearchFilters()));
 
   /// A new filter clears the confirmations, which belonged to the old view.
   void setFilters(ResearchFilters f) => emit(ResearchState(filters: f));

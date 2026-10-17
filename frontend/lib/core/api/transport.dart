@@ -23,6 +23,7 @@ class ApiException implements Exception {
 abstract interface class ApiTransport {
   Future<Object?> get(String path, [Json query = const {}]);
   Future<Object?> put(String path, Json body);
+  Future<Object?> delete(String path, [Json query = const {}]);
 }
 
 class HttpTransport implements ApiTransport {
@@ -49,6 +50,10 @@ class HttpTransport implements ApiTransport {
       body: jsonEncode(body),
     ),
   );
+
+  @override
+  Future<Object?> delete(String path, [Json query = const {}]) =>
+      _send(() => _client.delete(_uri(path, query)));
 
   Future<Object?> _send(Future<http.Response> Function() request) async {
     final http.Response res;
@@ -93,5 +98,12 @@ class FixtureTransport implements ApiTransport {
   Future<Object?> put(String path, Json body) async {
     await Future<void>.delayed(latency);
     return _saved[path] = body;
+  }
+
+  /// Forgets what was saved, so the fixture shows again.
+  @override
+  Future<Object?> delete(String path, [Json query = const {}]) async {
+    _saved.remove(path);
+    return get(path, query);
   }
 }

@@ -93,6 +93,24 @@ class ResearchFilters extends Equatable {
         onset: group?.onset ?? onset,
       );
 
+  /// Filters from a URL or a pinned trend's params; anything missing or unknown keeps its
+  /// default, and an empty map gives the defaults.
+  static ResearchFilters? fromParams(Map<String, Object?> p) {
+    if (p.isEmpty) return null;
+    const d = ResearchFilters();
+    return ResearchFilters(
+      ward: byCodeOrNull(Ward.values, p['ward']),
+      // A trend saved with all samples has no specimen key.
+      specimen: p.containsKey('organism')
+          ? byCodeOrNull(Specimen.values, p['specimen'])
+          : d.specimen,
+      organism: byCodeOrNull(Organism.values, p['organism']) ?? d.organism,
+      drug: byCodeOrNull(Drug.values, p['drug']) ?? d.drug,
+      ageBand: byCodeOrNull(AgeBand.values, p['age_band']),
+      onset: byCodeOrNull(Onset.values, p['onset']),
+    );
+  }
+
   /// Saved to the home dashboard as a `ResistanceTrend`; no dates, so it always shows the latest.
   Json get trendParams => {
     'organism': organism.code,

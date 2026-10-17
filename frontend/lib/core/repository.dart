@@ -85,8 +85,23 @@ class AmrRepository {
   )).upTo(q.asOf ?? dataEnd);
 
   // Dashboard: not cached, it is the user's own state.
-  Future<Dashboard> dashboard(String userId) async =>
-      Dashboard.fromJson((await _transport.get('/v1/dashboard', {'user_id': userId}))! as Json);
+  /// The saved layout, or the default for [role] and [ward] when nothing is saved. Never
+  /// cached: it changes as the user pins.
+  Future<Dashboard> dashboard(String userId, {Role? role, Ward? ward}) async => Dashboard.fromJson(
+    (await _transport.get('/v1/dashboard', _who(userId, role, ward)))! as Json,
+  );
+
+  /// Drops the saved layout and returns the default for [role] and [ward].
+  Future<Dashboard> resetDashboard(String userId, {Role? role, Ward? ward}) async =>
+      Dashboard.fromJson(
+        (await _transport.delete('/v1/dashboard', _who(userId, role, ward)))! as Json,
+      );
+
+  static Json _who(String userId, Role? role, Ward? ward) => {
+    'user_id': userId,
+    'role': ?role?.code,
+    'ward': ?ward?.code,
+  };
 
   Future<Dashboard> saveDashboard(Dashboard d) async =>
       Dashboard.fromJson((await _transport.put('/v1/dashboard', d.toJson()))! as Json);

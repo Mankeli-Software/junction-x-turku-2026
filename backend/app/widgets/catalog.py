@@ -93,6 +93,23 @@ CATALOG: dict[str, type[BaseModel]] = {
     "Explain": ExplainParams,
 }
 
+# What may sit on a home dashboard: the widgets that keep showing the latest data. ContextChips,
+# PatientHistory and the fixed notices belong to one answer only.
+PINNABLE: tuple[str, ...] = (
+    "CoverageRanking",
+    "OrganismMix",
+    "WindowCompare",
+    "AlertBanner",
+    "SpreadingCounts",
+    "CrossWardWarning",
+    "WardStatus",
+    "AlertCard",
+    "EpiCurve",
+    "SamplingVolume",
+    "CaseList",
+    "ResistanceTrend",
+)
+
 
 def catalog_schemas() -> dict[str, dict[str, Any]]:
     return {name: model.model_json_schema() for name, model in CATALOG.items()}

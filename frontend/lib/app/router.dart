@@ -13,6 +13,7 @@ import '../features/chat/chat_page.dart';
 import '../features/components/components_page.dart';
 import '../features/hygiene/hygiene_visual_page.dart';
 import '../features/lab/lab_page.dart';
+import '../features/research/research_data.dart';
 import '../features/research/research_page.dart';
 import '../session/session_cubit.dart';
 
@@ -100,7 +101,18 @@ GoRouter buildRouter(SessionCubit session) {
           ),
         ],
       ),
-      GoRoute(path: Routes.research, pageBuilder: (_, s) => _page(s, const ResearchPage())),
+      // Filters may come in the URL (`/research?organism=…&drug=…&ward=…`): a pinned trend
+      // opens here with its own settings.
+      GoRoute(
+        path: Routes.research,
+        pageBuilder: (_, s) => _page(
+          s,
+          ResearchPage(
+            key: ValueKey(s.uri.query),
+            initial: ResearchFilters.fromParams(s.uri.queryParameters),
+          ),
+        ),
+      ),
       GoRoute(
         path: Routes.chat,
         pageBuilder: (_, s) =>
@@ -161,6 +173,23 @@ class RouterCatalogActions implements CatalogActions {
       queryParameters: {'q': question, if (patient != null) ..._params(patient)},
     ).toString(),
   );
+
+  @override
+  void openResearch([Json params = const {}]) => _router.go(
+    Uri(
+      path: Routes.research,
+      queryParameters: {
+        for (final e in params.entries)
+          if (e.value is String) e.key: e.value! as String,
+      },
+    ).toString(),
+  );
+
+  @override
+  void openInfectionControl() => _router.go(Routes.hygiene);
+
+  @override
+  void openLab() => _router.go(Routes.lab);
 
   Map<String, String> _params(PatientProfile p) => p.toQuery().cast<String, String>();
 }

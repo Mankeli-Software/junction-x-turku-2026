@@ -23,7 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.dashboard import Role
+from app.models.dashboard import Role, WidgetPlacement
 from app.vocab import DEFAULT_AS_OF, AgeBand, InfectionType, Onset, Sex, Specimen, Ward
 
 
@@ -56,6 +56,32 @@ class AgentRequest(BaseModel):
         default_factory=list,
         max_length=24,
         description="earlier turns, oldest first, so a short reply is read as the answer to the last question",
+    )
+
+
+class WidgetAgentRequest(BaseModel):
+    """POST /v1/agent/widget: what the user wants on their home page (app/agent/builder.py).
+
+    Wire format, plain events (not A2UI: the app shows one proposal at a time in its own sheet):
+
+      event: status    data: {"text": "..."}
+      event: proposal  data: {"widget": "...", "params": {...}, "why": "..." | null}   params never carry as_of
+      event: clarify   data: {"question": "...", "options": ["...", ...]}
+      event: error     data: {"code": "...", "message": "..."}
+      event: done      data: {"ok": true, "usage": {...}}
+      : ping
+    """
+
+    message: str = Field(min_length=1, max_length=2000)
+    as_of: date = DEFAULT_AS_OF
+    role: Role = "doctor"
+    ward: Ward | None = Field(None, description="the user's own ward")
+    wards: list[Ward] = Field(default_factory=list, description="all wards the user looks after")
+    layout: list[WidgetPlacement] = Field(default_factory=list, max_length=30, description="what is pinned now")
+    history: list[HistoryTurn] = Field(
+        default_factory=list,
+        max_length=24,
+        description="earlier turns, oldest first: the user's requests and what was proposed or asked",
     )
 
 

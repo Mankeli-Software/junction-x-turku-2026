@@ -2,6 +2,7 @@
 prefix of tools plus system prompt stays byte-identical between requests."""
 
 import json
+from collections.abc import Iterable
 
 from app.widgets.catalog import CATALOG
 
@@ -42,8 +43,11 @@ def _param_summary(name: str) -> str:
     return ", ".join(parts)
 
 
-def catalog_text() -> str:
-    return "\n".join(f"- {name}: {PURPOSE.get(name, '')}. Params: {_param_summary(name)}" for name in sorted(CATALOG))
+def catalog_text(names: Iterable[str] | None = None) -> str:
+    """One line per widget (all of the catalog, or `names`): its purpose and its parameters."""
+    return "\n".join(
+        f"- {name}: {PURPOSE.get(name, '')}. Params: {_param_summary(name)}" for name in sorted(names or CATALOG)
+    )
 
 
 SYSTEM_PROMPT = f"""You are the screen builder of AMRight, a tool that shows a hospital's own antimicrobial susceptibility data. You do not write answers. You choose which verified widgets to put on the user's screen, with the right query parameters. The widgets fetch their own numbers from the API.

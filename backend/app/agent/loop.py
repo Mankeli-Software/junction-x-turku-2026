@@ -64,6 +64,27 @@ REFUSAL_MESSAGE = "I can't help with that here."
 Event = tuple[str, dict[str, Any]]
 
 
+def error_event(e: Exception, request_id: str) -> Event:
+    """The `error` event for an exception that ended a run, logged without the key. Call it from
+    the `except` block, so an unexpected error is logged with its traceback."""
+    if isinstance(e, anthropic.RateLimitError):
+        return "error", {"code": "rate_limited", "message": "The AI is busy right now. Try again in a moment."}
+    if isinstance(e, anthropic.AuthenticationError):
+        log.error("agent %s: the Anthropic key was rejected", request_id)
+        return "error", {"code": "unavailable", "message": "AI answers are paused right now."}
+    if isinstance(e, anthropic.APITimeoutError):
+        return "error", {"code": "timeout", "message": "The AI took too long to answer."}
+    if isinstance(e, anthropic.APIConnectionError):
+        # Only the type of the cause: the text of a header error contains the header, which is the API key.
+        log.error("agent %s: connection error (cause: %s)", request_id, type(e.__cause__).__name__)
+        return "error", {"code": "unreachable", "message": "Could not reach the AI service."}
+    if isinstance(e, anthropic.APIStatusError):
+        log.error("agent %s: API status %s", request_id, e.status_code)
+        return "error", {"code": "upstream", "message": "The AI service had a problem."}
+    log.exception("agent %s failed", request_id)
+    return "error", {"code": "internal", "message": "Something went wrong building the answer."}
+
+
 def _blocks(content: list[Any], kind: str) -> list[Any]:
     return [b for b in content if (b.get("type") if isinstance(b, dict) else getattr(b, "type", None)) == kind]
 
@@ -241,29 +262,9 @@ async def run(req: AgentRequest, llm: LLMClient) -> AsyncIterator[Event]:
         else:
             ok = False
             yield "error", {"code": "too_many_steps", "message": "That took too many steps. Try a simpler question."}
-    except anthropic.RateLimitError:
+    except Exception as e:  # noqa: BLE001 (error_event logs an unexpected one with its traceback)
         ok = False
-        yield "error", {"code": "rate_limited", "message": "The AI is busy right now. Try again in a moment."}
-    except anthropic.AuthenticationError:
-        ok = False
-        log.error("agent %s: the Anthropic key was rejected", request_id)
-        yield "error", {"code": "unavailable", "message": "AI answers are paused right now."}
-    except anthropic.APITimeoutError:
-        ok = False
-        yield "error", {"code": "timeout", "message": "The AI took too long to answer."}
-    except anthropic.APIConnectionError as e:
-        ok = False
-        # Only the type of the cause: the text of a header error contains the header, which is the API key.
-        log.error("agent %s: connection error (cause: %s)", request_id, type(e.__cause__).__name__)
-        yield "error", {"code": "unreachable", "message": "Could not reach the AI service."}
-    except anthropic.APIStatusError as e:
-        ok = False
-        log.error("agent %s: API status %s", request_id, e.status_code)
-        yield "error", {"code": "upstream", "message": "The AI service had a problem."}
-    except Exception:
-        ok = False
-        log.exception("agent %s failed", request_id)
-        yield "error", {"code": "internal", "message": "Something went wrong building the answer."}
+        yield error_event(e, request_id)
 
     yield header()
     yield "done", {"ok": ok, "usage": usage}

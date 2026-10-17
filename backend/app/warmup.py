@@ -57,6 +57,8 @@ def queries(as_of: date) -> list[tuple[str, dict]]:
         q.append(("get_susceptibility", {**RESEARCH_DEFAULT, **window}))
         q += [("get_susceptibility", {**RESEARCH_DEFAULT, **window, "sex": s}) for s in ("F", "M")]
     q.append(("get_susceptibility_series", {**RESEARCH_DEFAULT, "window": "365d", "wards": ["URO", "ICU"]}))
+    # The pinned trend on every default home dashboard (functions/dashboard.py), per ward
+    q += [("get_susceptibility_series", {**RESEARCH_DEFAULT, "ward": w}) for w in WARDS]
     return q
 
 

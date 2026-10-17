@@ -19,6 +19,7 @@ class StoreUnavailable(Exception):
 class DashboardStore(Protocol):
     def get(self, user_id: str) -> DashboardOut | None: ...
     def put(self, out: DashboardOut) -> None: ...
+    def delete(self, user_id: str) -> None: ...
 
 
 class PostgresDashboardStore:
@@ -51,6 +52,13 @@ class PostgresDashboardStore:
         except psycopg.Error as e:
             raise StoreUnavailable(str(e)) from e
 
+    def delete(self, user_id: str) -> None:
+        try:
+            with db.connect() as conn:
+                conn.execute("DELETE FROM user_dashboards WHERE user_id = %s", (user_id,))
+        except psycopg.Error as e:
+            raise StoreUnavailable(str(e)) from e
+
 
 class MemoryDashboardStore:
     def __init__(self) -> None:
@@ -61,6 +69,9 @@ class MemoryDashboardStore:
 
     def put(self, out: DashboardOut) -> None:
         self._saved[out.user_id] = out
+
+    def delete(self, user_id: str) -> None:
+        self._saved.pop(user_id, None)
 
 
 store: DashboardStore = PostgresDashboardStore()

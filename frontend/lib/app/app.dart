@@ -13,13 +13,14 @@ import '../features/chat/agent/remote_agent.dart';
 import '../features/chat/answer_catalog.dart';
 import '../features/chat/chat_cubit.dart';
 import '../features/dashboard/dashboard_cubit.dart';
+import '../features/dashboard/widget_agent.dart';
 import '../session/session_cubit.dart';
 import 'config.dart';
 import 'router.dart';
 
 /// Wires the app: repository, widget catalog, actions, session and the user's dashboard.
 class AmrApp extends StatefulWidget {
-  const AmrApp({super.key, required this.session, this.transport, this.agent});
+  const AmrApp({super.key, required this.session, this.transport, this.agent, this.widgetAgent});
 
   final SessionCubit session;
 
@@ -29,6 +30,10 @@ class AmrApp extends StatefulWidget {
   /// Override for tests; defaults to the Claude agent on the backend. With no backend (fixture
   /// mode) it cannot be reached, and the chat offers the quick patient form instead.
   final ChatAgent Function()? agent;
+
+  /// Override for tests; defaults to the widget agent on the backend ("Add a widget" on the
+  /// home page). Without it the dialog offers the catalog.
+  final WidgetAgent? widgetAgent;
 
   @override
   State<AmrApp> createState() => _AmrAppState();
@@ -43,6 +48,7 @@ class _AmrAppState extends State<AmrApp> {
   late final GoRouter _router = buildRouter(widget.session);
   late final CatalogActions _actions = RouterCatalogActions(_router);
   final WidgetCatalog _catalog = buildCatalog();
+  late final WidgetAgent _widgetAgent = widget.widgetAgent ?? RemoteWidgetAgent(AppConfig.apiBase);
 
   @override
   void dispose() {
@@ -57,6 +63,7 @@ class _AmrAppState extends State<AmrApp> {
         RepositoryProvider.value(value: _repo),
         RepositoryProvider.value(value: _catalog),
         RepositoryProvider.value(value: _actions),
+        RepositoryProvider.value(value: _widgetAgent),
       ],
       child: BlocProvider.value(
         value: widget.session,

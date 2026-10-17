@@ -433,7 +433,8 @@ class _Sentence extends StatelessWidget {
         for (final f in fields) ...[
           Text(f.lead, style: style),
           _Token(
-            label: (_tokenFor(f) ?? f.placeholder) +
+            label:
+                (_tokenFor(f) ?? f.placeholder) +
                 (f == fields.last && _tokenFor(f) != null ? '.' : ''),
             empty: _tokenFor(f) == null,
             active: f == state.active,

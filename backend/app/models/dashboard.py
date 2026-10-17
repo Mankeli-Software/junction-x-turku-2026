@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.vocab import Ward
+
 Role = Literal["doctor", "hygiene", "care_worker", "lab", "researcher"]
 
 # A saved layout is a row in Postgres that anyone with the app's origin can write: keep it small.
@@ -12,6 +14,8 @@ MAX_LAYOUT_CHARS = 20_000
 
 class DashboardQuery(BaseModel):
     user_id: str = Field("demo", min_length=1, max_length=64)
+    role: Role | None = Field(None, description="picks the default layout when nothing is saved (doctor if empty)")
+    ward: Ward | None = Field(None, description="the user's own ward, used by the default layout")
 
 
 class WidgetPlacement(BaseModel):
