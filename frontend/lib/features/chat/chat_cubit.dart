@@ -39,10 +39,16 @@ class ChatCubit extends Cubit<ChatState> {
   StreamSubscription<AgentEvent>? _sub;
   int _nextId = 0;
 
-  Future<void> send(String text, {bool short = false}) async {
+  /// Asks [text]; [patient] (a question from an answer page) replaces the patient of the
+  /// conversation so far.
+  Future<void> send(String text, {bool short = false, PatientProfile? patient}) async {
     final user = _session.state.user;
     if (user == null || text.trim().isEmpty || state.busy) return;
-    final context = ChatContext(user: user, asOf: _session.state.asOf, profile: state.profile);
+    final context = ChatContext(
+      user: user,
+      asOf: _session.state.asOf,
+      profile: patient ?? state.profile,
+    );
     final answerId = _nextId + 1;
     _nextId += 2;
     emit(

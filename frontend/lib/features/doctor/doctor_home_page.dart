@@ -10,6 +10,8 @@ import '../../core/models/common.dart';
 import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
 import '../../session/session_cubit.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import '../dashboard/pinned_section.dart';
 import '../shell/app_page.dart';
 import 'patient_form.dart';
@@ -26,7 +28,6 @@ class DoctorHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.select((SessionCubit c) => c.state.user);
     final ward = user?.ward;
-    final actions = context.read<CatalogActions>();
     return BlocProvider(
       create: (_) => PatientFormCubit(initial: initial),
       child: AppPage(
@@ -34,7 +35,7 @@ class DoctorHomePage extends StatelessWidget {
           top: fluid(context, 32, 5, 72),
           gap: AmrSpace.x36,
           children: [
-            _Header(ward: ward, onAsk: actions.ask),
+            _Header(ward: ward),
             PatientForm(homeWard: ward),
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -116,40 +117,29 @@ class _WardQuestions extends StatelessWidget {
   }
 }
 
-/// "Home ✦ Urology", "Who is your patient?" and the free-text field. On a short wide window
-/// the field sits beside the title (as on the Hygiene page) so the form fits without scrolling.
+/// "Home ✦ Urology", "Who is your patient?" and, under it, the field that opens the AI
+/// composer. Short windows get the medium field so the form still fits without scrolling.
 class _Header extends StatelessWidget {
-  const _Header({required this.ward, required this.onAsk});
+  const _Header({required this.ward});
 
   final Ward? ward;
-  final ValueChanged<String> onAsk;
 
   @override
   Widget build(BuildContext context) {
-    final title = ColumnGap([
-      Breadcrumb(['Home', ward?.label ?? 'All wards'], onTapFirst: () => goHome(context)),
-      Text('Who is your patient?', style: AmrText.display(context)),
-    ], gap: context.vfit(22, min: 10));
-    const hint = 'e.g. woman over 75, urinary infection, on the ward for 3 days';
-    if (context.isShort && context.screenWidth >= 1100) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(child: title),
-          const SizedBox(width: 24),
-          SizedBox(
-            width: 480,
-            child: AskField(hint: hint, onSubmit: onAsk),
-          ),
-        ],
-      );
-    }
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 980),
         child: ColumnGap(
-          [title, AskField(hint: hint, size: AskFieldSize.large, onSubmit: onAsk)],
+          [
+            Breadcrumb(['Home', ward?.label ?? 'All wards'], onTapFirst: () => goHome(context)),
+            Text('Who is your patient?', style: AmrText.display(context)),
+            AskLauncher(
+              hint: 'e.g. woman over 75, urinary infection, on the ward for 3 days',
+              size: context.isShort ? AskFieldSize.medium : AskFieldSize.large,
+              about: AskContext.patientForm(ward: ward),
+            ),
+          ],
           gap: context.vfit(22, min: 12),
           crossAxisAlignment: CrossAxisAlignment.stretch,
         ),

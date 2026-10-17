@@ -14,6 +14,8 @@ import '../../core/models/data.dart';
 import '../../core/models/vocab.dart';
 import '../../core/query/query_view.dart';
 import '../../ds/ds.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import '../dashboard/dashboard_cubit.dart';
 import '../shell/app_page.dart';
 
@@ -30,7 +32,7 @@ class DoctorAnswerPage extends StatelessWidget {
     final coverage = CoverageQuery(profile: profile);
     return AppPage(
       glowHeight: 520,
-      phoneBar: const StickyAskBar(hint: 'Ask a follow-up…'),
+      phoneBar: StickyAskBar(hint: 'Ask a follow-up…', about: AskContext.answer(profile)),
       body: PageBody(
         children: [
           ColumnGap(
@@ -141,14 +143,15 @@ class _FollowUp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = context.read<CatalogActions>();
+    final about = AskContext.answer(query.profile);
     return AmrCard(
       tone: AmrCardTone.quiet,
       child: ColumnGap([
         Text('Ask a follow-up', style: AmrText.title(26)),
-        AskField(
-          hint: 'e.g. what if she is allergic to penicillin?',
+        AskLauncher(
+          hint: 'e.g. ${about.suggestions.first.toLowerCase()}',
           style: AskFieldStyle.outlined,
-          onSubmit: actions.ask,
+          about: about,
         ),
         Wrap(
           spacing: 8,
@@ -157,12 +160,13 @@ class _FollowUp extends StatelessWidget {
             AmrButton(
               label: 'Only oral options',
               size: AmrButtonSize.md,
-              onPressed: () => actions.ask('Only oral options'),
+              onPressed: () => actions.ask('Only oral options', patient: query.profile),
             ),
             AmrButton(
               label: 'Compare with the whole hospital',
               size: AmrButtonSize.md,
-              onPressed: () => actions.ask('Compare with the whole hospital'),
+              onPressed: () =>
+                  actions.ask('Compare with the whole hospital', patient: query.profile),
             ),
             AmrButton(
               label: 'Pin to my home',

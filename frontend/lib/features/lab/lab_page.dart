@@ -4,12 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../shell/top_bar.dart';
 
-import '../../catalog/actions.dart';
 import '../../catalog/widgets/alert_card.dart';
 import '../../core/models/alerts.dart';
 import '../../core/models/vocab.dart';
 import '../../core/query/query_view.dart';
 import '../../ds/ds.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import '../shell/app_page.dart';
 import 'alert_investigation.dart';
 import 'lab_cubit.dart';
@@ -222,10 +223,7 @@ class _PhoneInbox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _StickyBottomPage(
-      bottom: AskField(
-        hint: 'Ask, e.g. is this alert real?',
-        onSubmit: context.read<CatalogActions>().ask,
-      ),
+      bottom: AskLauncher(hint: 'Ask, e.g. is this alert real?', about: AskContext.alerts()),
       body: PageBody(
         top: 12,
         bottom: 16,

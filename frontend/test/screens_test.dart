@@ -1,7 +1,8 @@
 import 'package:amiright/app/app.dart';
 import 'package:amiright/core/api/transport.dart';
 import 'package:amiright/session/session_cubit.dart';
-import 'package:flutter/widgets.dart';
+import 'package:amiright/features/chat/widgets/ask_launcher.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -86,5 +87,40 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('I can’t suggest doses or prescribe.'), findsOneWidget);
+  });
+
+  testWidgets('ask fields open a composer that knows where it was opened', (tester) async {
+    Future<void> openComposer() async {
+      final field = find.descendant(
+        of: find.byType(AskLauncher).first,
+        matching: find.byType(TextField),
+      );
+      await tester.ensureVisible(field);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(field);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 150));
+      }
+    }
+
+    await open(tester, 'sanna', '/hygiene');
+    await openComposer();
+    expect(find.text('Ask about spreading'), findsOneWidget);
+    expect(find.text('Which wards should we warn?'), findsOneWidget);
+
+    // From an answer, the follow-up is answered for the same patient.
+    await open(
+      tester,
+      'aino',
+      '/doctor/answer?ward=URO&infection_type=uti&sex=F&age_band=75%2B&onset=hospital',
+    );
+    await openComposer();
+    expect(find.text('Ask about this patient'), findsOneWidget);
+    expect(find.text('What if she is allergic to penicillin?'), findsOneWidget);
+    await tester.tap(find.text('Only oral options').last);
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+    expect(find.textContaining('oral options only'), findsOneWidget);
   });
 }

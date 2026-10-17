@@ -15,6 +15,8 @@ import '../../core/query/query_view.dart';
 import '../../core/repository.dart';
 import '../../ds/ds.dart';
 import '../../session/session_cubit.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import '../dashboard/dashboard_cubit.dart';
 import '../shell/app_page.dart';
 import 'research_cubit.dart';
@@ -219,9 +221,9 @@ class _PromptCard extends StatelessWidget {
       child: ColumnGap(
         [
           Text('Make a chart by describing it', style: AmrText.body(15, weight: FontWeight.w500)),
-          AskField(
+          AskLauncher(
             hint: 'e.g. E. coli resistance to trimethoprim by sex, urine, every 3 months',
-            onSubmit: actions.ask,
+            about: AskContext.research(),
           ),
           Wrap(
             spacing: 8,

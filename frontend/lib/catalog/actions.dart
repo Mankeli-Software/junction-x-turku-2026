@@ -14,6 +14,7 @@ abstract interface class CatalogActions {
 
   void openAlert(String alertId);
 
-  /// Hand a question to the chat.
-  void ask(String question);
+  /// Hand a question to the chat; with [patient], the chat answers about that patient
+  /// (follow-ups from an answer page).
+  void ask(String question, {PatientProfile? patient});
 }

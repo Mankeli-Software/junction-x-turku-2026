@@ -25,6 +25,7 @@ class AskField extends StatefulWidget {
     this.style = AskFieldStyle.elevated,
     this.enabled = true,
     this.controller,
+    this.onTap,
   });
 
   final String hint;
@@ -33,6 +34,10 @@ class AskField extends StatefulWidget {
   final AskFieldStyle style;
   final bool enabled;
   final TextEditingController? controller;
+
+  /// Makes the field a launcher: tapping it (or the send button while it is empty) calls
+  /// [onTap] instead of typing in place, e.g. to open a larger composer.
+  final VoidCallback? onTap;
 
   @override
   State<AskField> createState() => _AskFieldState();
@@ -49,7 +54,10 @@ class _AskFieldState extends State<AskField> {
 
   void _submit() {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      widget.onTap?.call();
+      return;
+    }
     widget.onSubmit?.call(text);
   }
 
@@ -84,6 +92,9 @@ class _AskFieldState extends State<AskField> {
                   child: TextField(
                     controller: _controller,
                     enabled: widget.enabled,
+                    readOnly: widget.onTap != null,
+                    onTap: widget.onTap,
+                    mouseCursor: widget.onTap != null ? SystemMouseCursors.text : null,
                     style: textStyle,
                     onSubmitted: (_) => _submit(),
                     decoration: InputDecoration.collapsed(

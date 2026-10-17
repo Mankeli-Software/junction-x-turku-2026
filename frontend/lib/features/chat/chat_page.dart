@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../catalog/actions.dart';
+import '../../core/models/common.dart';
 import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
 import '../../session/session_cubit.dart';
@@ -35,10 +36,13 @@ List<String> roleQuestions(Role? role) => switch (role) {
 
 /// The chat: the conversation in a 1040px column, the composer stuck to the bottom.
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, this.question});
+  const ChatPage({super.key, this.question, this.patient});
 
   /// Sent once on open (`/chat?q=…`, from any "Ask" field in the app).
   final String? question;
+
+  /// The patient [question] was asked about (`&ward=…&infection_type=…`), from an answer page.
+  final PatientProfile? patient;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -54,7 +58,7 @@ class _ChatPageState extends State<ChatPage> {
     if (q != null && q.trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        context.read<ChatCubit>().send(q);
+        context.read<ChatCubit>().send(q, patient: widget.patient);
         context.replace('/chat'); // a reload must not ask again
       });
     }

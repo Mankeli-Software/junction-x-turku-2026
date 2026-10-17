@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../catalog/actions.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import '../../ds/ds.dart';
 import 'top_bar.dart';
 
@@ -86,13 +86,13 @@ class StickyBar extends StatelessWidget {
   );
 }
 
-/// The ask field for [AppPage.phoneBar]; hands the question to the chat.
+/// The ask field for [AppPage.phoneBar]; opens the composer for [about].
 class StickyAskBar extends StatelessWidget {
-  const StickyAskBar({super.key, this.hint = 'Ask anything…'});
+  const StickyAskBar({super.key, required this.about, this.hint = 'Ask anything…'});
 
+  final AskContext about;
   final String hint;
 
   @override
-  Widget build(BuildContext context) =>
-      AskField(hint: hint, onSubmit: context.read<CatalogActions>().ask);
+  Widget build(BuildContext context) => AskLauncher(hint: hint, about: about);
 }

@@ -9,6 +9,8 @@ import '../../core/models/dashboard.dart';
 import '../../core/models/vocab.dart';
 import '../../ds/ds.dart';
 import '../../session/session_cubit.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import 'dashboard_cubit.dart';
 
 /// "UTI · Urology · woman 75+" from a placement's params.
@@ -192,10 +194,10 @@ class _AddWidgetCard extends StatelessWidget {
       child: ColumnGap([
         Text('Add a widget', style: AmrText.title(24, em: 0)),
         Text('Describe what you want to see', style: AmrText.body(14, weight: FontWeight.w500)),
-        AskField(
+        AskLauncher(
           hint: 'e.g. MRSA on my ward this year',
           style: AskFieldStyle.flat,
-          onSubmit: context.read<CatalogActions>().ask,
+          about: AskContext.dashboard(ward: context.select((SessionCubit c) => c.state.user?.ward)),
         ),
         Text('Or pick from the catalog', style: AmrText.body(14, weight: FontWeight.w500)),
         Wrap(

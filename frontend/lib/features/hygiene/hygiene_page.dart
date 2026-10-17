@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../shell/top_bar.dart';
 
-import '../../catalog/actions.dart';
 import '../../catalog/widgets/cross_ward_warning.dart';
 import '../../catalog/widgets/spreading_counts.dart';
 import '../../catalog/widgets/ward_status.dart';
@@ -11,6 +10,8 @@ import '../../core/models/vocab.dart';
 import '../../core/query/query_view.dart';
 import '../../ds/ds.dart';
 import '../../session/session_cubit.dart';
+import '../chat/ask_context.dart';
+import '../chat/widgets/ask_launcher.dart';
 import '../shell/app_page.dart';
 import 'hygiene_cubit.dart';
 
@@ -21,11 +22,12 @@ class HygienePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final role = context.select((SessionCubit c) => c.state.user?.role);
     return BlocProvider(
       create: (_) => HygieneCubit(),
-      child: const AppPage(
-        body: _Body(),
-        phoneBar: StickyAskBar(hint: 'Ask, e.g. MRSA in ICU?'),
+      child: AppPage(
+        body: const _Body(),
+        phoneBar: StickyAskBar(hint: 'Ask, e.g. MRSA in ICU?', about: AskContext.spreading(role)),
       ),
     );
   }
@@ -119,9 +121,9 @@ class _Header extends StatelessWidget {
         ], gap: AmrSpace.x18),
         SizedBox(
           width: 460,
-          child: AskField(
+          child: AskLauncher(
             hint: 'Ask, e.g. where is MRSA this month?',
-            onSubmit: context.read<CatalogActions>().ask,
+            about: AskContext.spreading(context.select((SessionCubit c) => c.state.user?.role)),
           ),
         ),
       ],

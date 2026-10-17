@@ -1,6 +1,7 @@
 import 'package:amiright/app/app.dart';
 import 'package:amiright/core/api/transport.dart';
 import 'package:amiright/session/session_cubit.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -110,5 +111,44 @@ void main() {
     await tester.tap(find.text('In hospital, day 3 or later').first);
     await settle();
     expect(find.text('Selected patient · tap to change'), findsOneWidget);
+  });
+
+  testWidgets('the ask field opens a composer: Esc keeps the draft, Enter asks', (tester) async {
+    tester.view.physicalSize = const Size(1440, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({'flutter.session.user': 'aino'});
+    final session = await SessionCubit.restore();
+    await tester.pumpWidget(
+      AmrApp(
+        session: session,
+        transport: FixtureTransport(latency: Duration.zero),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(TextField).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Ask the AI'), findsOneWidget);
+    expect(find.text('Try asking'), findsOneWidget);
+
+    // Esc puts the field back with what was typed; the form is untouched.
+    await tester.enterText(find.byType(TextField).last, 'woman over 75 with a UTI');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('Ask the AI'), findsNothing);
+    expect(find.text('woman over 75 with a UTI'), findsOneWidget);
+    expect(find.text('Step 1 of 5'), findsOneWidget);
+
+    // Open again and send: the chat opens with the question.
+    await tester.tap(find.byType(TextField).first);
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(find.text('Ask the AI'), findsNothing);
+    expect(find.text('woman over 75 with a UTI'), findsOneWidget);
+    expect(find.text('Who is your patient?'), findsNothing);
   });
 }

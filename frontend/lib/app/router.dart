@@ -58,6 +58,12 @@ CustomTransitionPage<void> _page(GoRouterState state, Widget child) => CustomTra
 /// answer can be linked, reloaded and opened by the chat.
 PatientProfile _profileOf(GoRouterState s) => PatientProfile.fromJson(s.uri.queryParameters);
 
+/// The patient a chat question was asked about, if the URL names one.
+PatientProfile? _patientOf(GoRouterState s) {
+  final p = _profileOf(s);
+  return p == const PatientProfile() ? null : p;
+}
+
 GoRouter buildRouter(SessionCubit session) {
   return GoRouter(
     initialLocation: Routes.login,
@@ -97,7 +103,8 @@ GoRouter buildRouter(SessionCubit session) {
       GoRoute(path: Routes.research, pageBuilder: (_, s) => _page(s, const ResearchPage())),
       GoRoute(
         path: Routes.chat,
-        pageBuilder: (_, s) => _page(s, ChatPage(question: s.uri.queryParameters['q'])),
+        pageBuilder: (_, s) =>
+            _page(s, ChatPage(question: s.uri.queryParameters['q'], patient: _patientOf(s))),
       ),
       GoRoute(path: Routes.components, pageBuilder: (_, s) => _page(s, const ComponentsPage())),
     ],
@@ -145,10 +152,15 @@ class RouterCatalogActions implements CatalogActions {
   @override
   void openAlert(String alertId) => _router.go(Routes.alert(alertId));
 
-  /// Every "Ask" field in the app hands its question to the chat.
+  /// Every "Ask" field in the app hands its question to the chat, with the patient it was
+  /// asked about in the same URL.
   @override
-  void ask(String question) =>
-      _router.go(Uri(path: Routes.chat, queryParameters: {'q': question}).toString());
+  void ask(String question, {PatientProfile? patient}) => _router.go(
+    Uri(
+      path: Routes.chat,
+      queryParameters: {'q': question, if (patient != null) ..._params(patient)},
+    ).toString(),
+  );
 
   Map<String, String> _params(PatientProfile p) => p.toQuery().cast<String, String>();
 }
