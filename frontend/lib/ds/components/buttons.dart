@@ -157,7 +157,8 @@ class AmrButton extends StatelessWidget {
   }
 }
 
-enum AmrIconButtonVariant { primary, soft, surface }
+/// [accent]: violet, the AI's colour (the send button on "Ask AMRight").
+enum AmrIconButtonVariant { primary, soft, surface, accent }
 
 /// Round icon button: the send arrow (navy) and widget options (soft lavender).
 class AmrIconButton extends StatelessWidget {
@@ -197,6 +198,10 @@ class AmrIconButton extends StatelessWidget {
           AmrIconButtonVariant.surface => (
             s.hovered ? AmrColors.lavenderSoft : AmrColors.white,
             AmrColors.ink,
+          ),
+          AmrIconButtonVariant.accent => (
+            s.hovered ? AmrColors.violetHover : AmrColors.violet,
+            AmrColors.white,
           ),
         };
         return AnimatedContainer(

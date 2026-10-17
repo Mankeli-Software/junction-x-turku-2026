@@ -182,12 +182,27 @@ class _CardMenu extends StatelessWidget {
   }
 }
 
-class _AddWidgetCard extends StatelessWidget {
+/// "Add a widget": describe it, or pick from the catalog (the first few; the rest on demand,
+/// so the card does not stretch the pinned row).
+class _AddWidgetCard extends StatefulWidget {
   const _AddWidgetCard();
 
   @override
+  State<_AddWidgetCard> createState() => _AddWidgetCardState();
+}
+
+class _AddWidgetCardState extends State<_AddWidgetCard> {
+  static const _shown = 6;
+  bool _all = false;
+
+  @override
   Widget build(BuildContext context) {
-    final entries = context.read<WidgetCatalog>().entries.where((e) => e.name != 'ContextChips');
+    final entries = context
+        .read<WidgetCatalog>()
+        .entries
+        .where((e) => e.name != 'ContextChips')
+        .toList();
+    final more = entries.length - _shown;
     return AmrCard(
       tone: AmrCardTone.dashed,
       padding: const EdgeInsets.all(AmrSpace.x24),
@@ -200,20 +215,37 @@ class _AddWidgetCard extends StatelessWidget {
           about: AskContext.dashboard(ward: context.select((SessionCubit c) => c.state.user?.ward)),
         ),
         Text('Or pick from the catalog', style: AmrText.body(14, weight: FontWeight.w500)),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final e in entries)
-              AmrButton(
-                label: '+ ${e.title ?? e.name}',
-                size: AmrButtonSize.sm,
-                variant: AmrButtonVariant.outline,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                onPressed: () => _pin(context, e),
-              ),
-          ],
+        AnimatedSize(
+          duration: AmrMotion.base,
+          curve: AmrMotion.curve,
+          alignment: Alignment.topCenter,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in _all ? entries : entries.take(_shown))
+                AmrButton(
+                  label: '+ ${e.title ?? e.name}',
+                  size: AmrButtonSize.sm,
+                  variant: AmrButtonVariant.outline,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  onPressed: () => _pin(context, e),
+                ),
+            ],
+          ),
         ),
+        if (more > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Pressable(
+              onTap: () => setState(() => _all = !_all),
+              pressScale: 1,
+              builder: (_, _) => Text(
+                _all ? 'Show fewer' : 'Browse the whole catalog ($more more)',
+                style: AmrText.body(14).copyWith(decoration: TextDecoration.underline),
+              ),
+            ),
+          ),
       ], crossAxisAlignment: CrossAxisAlignment.stretch),
     );
   }

@@ -1,5 +1,7 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../shell/top_bar.dart';
 
 import '../../catalog/actions.dart';
@@ -46,7 +48,7 @@ class DoctorHomePage extends StatelessWidget {
                     query: AlertsQuery(ward: ward, status: AlertStatus.active),
                     slot: WidgetSlot.card,
                   ),
-                  _WardQuestions(ward: ward),
+                  _AskCard(ward: ward),
                 ],
               ),
             ),
@@ -58,9 +60,10 @@ class DoctorHomePage extends StatelessWidget {
   }
 }
 
-/// "People on your ward often ask": presets that open an answer without the AI.
-class _WardQuestions extends StatelessWidget {
-  const _WardQuestions({required this.ward});
+/// "Ask AMRight": the AI's own card, with its ask field and a row of questions. The first two
+/// open an answer straight away (no AI needed), the rest go to the chat.
+class _AskCard extends StatelessWidget {
+  const _AskCard({required this.ward});
 
   final Ward? ward;
 
@@ -89,30 +92,92 @@ class _WardQuestions extends StatelessWidget {
           ),
         ),
       ),
-      ('What is causing UTIs now?', () => actions.ask('What is causing UTIs now?')),
-      ('Is trimethoprim still OK?', () => actions.ask('Is trimethoprim still OK?')),
+      for (final q in const [
+        'What is causing UTIs now?',
+        'Is trimethoprim still OK?',
+        'Mecillinam or nitrofurantoin?',
+      ])
+        (q, () => actions.ask(q)),
     ];
-    return AmrCard(
-      tone: AmrCardTone.accent,
-      child: ColumnGap([
-        Text(
-          ward == null ? 'People often ask' : 'People on your ward often ask',
-          style: AmrText.label(14),
+    final chips = [
+      for (final (label, onTap) in presets)
+        AmrButton(
+          label: label,
+          size: AmrButtonSize.sm,
+          variant: AmrButtonVariant.soft,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          onPressed: onTap,
         ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final (label, onTap) in presets)
-              AmrButton(
-                label: label,
-                variant: AmrButtonVariant.soft,
-                size: AmrButtonSize.md,
-                onPressed: onTap,
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AmrSpace.x24),
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(
+        borderRadius: AmrRadius.card,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AmrColors.lavender, Color(0xFFE4D9F7), AmrColors.glowPink],
+          stops: [0, 0.6, 1],
+        ),
+      ),
+      child: ColumnGap(
+        [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AmrSpace.x24),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(color: AmrColors.violet, shape: BoxShape.circle),
+                  child: const Icon(LucideIcons.sparkles, size: 18, color: AmrColors.white),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ask AMRight', style: AmrText.body(16, weight: FontWeight.w600)),
+                      Text('AI answers with verified data from your lab', style: AmrText.body(13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AmrSpace.x24),
+            child: AskLauncher(
+              hint: 'Ask anything about resistance on your ward',
+              style: AskFieldStyle.flat,
+              accent: true,
+              about: AskContext.patientForm(ward: ward),
+            ),
+          ),
+          // One row to the card's edges, as in the design; swipe it, drag it with a mouse,
+          // or scroll it with a trackpad.
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(dragDevices: {...PointerDeviceKind.values}, scrollbars: false),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: AmrSpace.x24),
+              child: Row(
+                children: [
+                  for (final (i, chip) in chips.indexed) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    chip,
+                  ],
+                ],
               ),
-          ],
-        ),
-      ]),
+            ),
+          ),
+        ],
+        gap: AmrSpace.x12,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+      ),
     );
   }
 }

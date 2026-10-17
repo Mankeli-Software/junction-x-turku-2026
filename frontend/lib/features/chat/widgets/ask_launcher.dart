@@ -21,6 +21,7 @@ class AskLauncher extends StatefulWidget {
     required this.about,
     this.size = AskFieldSize.medium,
     this.style = AskFieldStyle.elevated,
+    this.accent = false,
   });
 
   final String hint;
@@ -29,6 +30,9 @@ class AskLauncher extends StatefulWidget {
   final AskContext about;
   final AskFieldSize size;
   final AskFieldStyle style;
+
+  /// A violet send button, here and in the composer.
+  final bool accent;
 
   @override
   State<AskLauncher> createState() => _AskLauncherState();
@@ -62,6 +66,7 @@ class _AskLauncherState extends State<AskLauncher> {
       source: _rect,
       hint: widget.hint,
       about: widget.about,
+      accent: widget.accent,
       onSubmit: _ask,
     );
     _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
@@ -84,6 +89,7 @@ class _AskLauncherState extends State<AskLauncher> {
       hint: widget.hint,
       size: widget.size,
       style: widget.style,
+      accent: widget.accent,
       controller: _controller,
       onTap: _expand,
       onSubmit: _ask, // the send button with a kept draft asks it right away
@@ -97,6 +103,7 @@ class _ComposerRoute extends PopupRoute<void> {
     required this.source,
     required this.hint,
     required this.about,
+    required this.accent,
     required this.onSubmit,
   });
 
@@ -104,6 +111,7 @@ class _ComposerRoute extends PopupRoute<void> {
   final Rect? Function() source;
   final String hint;
   final AskContext about;
+  final bool accent;
   final ValueChanged<String> onSubmit;
 
   @override
@@ -221,6 +229,7 @@ class _ComposerState extends State<_Composer> {
                     t: t,
                     compact: compact,
                     enabled: !_sending,
+                    accent: widget.route.accent,
                     onSend: _send,
                   ),
                 ),
@@ -318,6 +327,7 @@ class _Field extends StatelessWidget {
     required this.t,
     required this.compact,
     required this.enabled,
+    required this.accent,
     required this.onSend,
   });
 
@@ -326,6 +336,7 @@ class _Field extends StatelessWidget {
   final double t;
   final bool compact;
   final bool enabled;
+  final bool accent;
   final ValueChanged<String?> onSend;
 
   @override
@@ -371,6 +382,7 @@ class _Field extends StatelessWidget {
                 size: button,
                 iconSize: lerpDouble(22, 24, t)!,
                 tooltip: 'Ask',
+                variant: accent ? AmrIconButtonVariant.accent : AmrIconButtonVariant.primary,
                 onPressed: enabled ? () => onSend(null) : null,
               ),
             ],

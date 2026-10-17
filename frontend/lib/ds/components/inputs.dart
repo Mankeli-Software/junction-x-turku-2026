@@ -26,6 +26,7 @@ class AskField extends StatefulWidget {
     this.enabled = true,
     this.controller,
     this.onTap,
+    this.accent = false,
   });
 
   final String hint;
@@ -38,6 +39,9 @@ class AskField extends StatefulWidget {
   /// Makes the field a launcher: tapping it (or the send button while it is empty) calls
   /// [onTap] instead of typing in place, e.g. to open a larger composer.
   final VoidCallback? onTap;
+
+  /// A violet send button: the AI's colour.
+  final bool accent;
 
   @override
   State<AskField> createState() => _AskFieldState();
@@ -110,6 +114,7 @@ class _AskFieldState extends State<AskField> {
               icon: LucideIcons.arrowRight,
               size: fieldHeight,
               iconSize: large ? 22 : 18,
+              variant: widget.accent ? AmrIconButtonVariant.accent : AmrIconButtonVariant.primary,
               onPressed: widget.enabled ? _submit : null,
             ),
           ],
