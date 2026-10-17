@@ -42,6 +42,17 @@ class AmrRepository {
   Future<Coverage> coverage(CoverageQuery q) =>
       _get('/v1/coverage', q.toQuery(), Coverage.fromJson);
 
+  /// The AI's "In short" lines (answer page, alert page, infection control); 503 when AI
+  /// answers are off.
+  Future<InShort> inShort(CoverageQuery q) =>
+      _get('/v1/agent/in-short', q.toQuery(), InShort.fromJson);
+
+  Future<InShort> alertInShort(AlertDetailQuery q) =>
+      _get('/v1/agent/in-short/alert', q.toQuery(), InShort.fromJson);
+
+  Future<InShort> spreadingInShort(SpreadingInShortQuery q) =>
+      _get('/v1/agent/in-short/spreading', q.toQuery(), InShort.fromJson);
+
   Future<Susceptibility> susceptibility(SusceptibilityQuery q) =>
       _get('/v1/susceptibility', q.toQuery(), Susceptibility.fromJson);
 

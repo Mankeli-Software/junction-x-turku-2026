@@ -108,7 +108,7 @@ class _Answer extends StatelessWidget {
             ),
           ],
         ),
-        const InShortCard(),
+        AiInShort(query: query, fetch: (repo, q) => repo.inShort(q)),
         CoverageTable(coverage: coverage),
         FlexSplit(
           basis: const [380, 380],

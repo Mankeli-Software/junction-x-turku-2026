@@ -16,7 +16,9 @@ def _default_data_dir() -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # backend/.env wherever the app is started from (AGENTS.md runs it from the repo root), then a
+    # .env in the working directory; real environment variables win over both.
+    model_config = SettingsConfigDict(env_file=(Path(__file__).resolve().parents[1] / ".env", ".env"), extra="ignore")
 
     database_url: str = "postgresql://aei:aei@localhost:5432/aei"
     api_key: str = ""
@@ -30,7 +32,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5-5"
     agent_effort: Literal["low", "medium", "high"] = "medium"
-    agent_fake: bool = False  # stream a fixed screen from a scripted client, no API call
     agent_fallbacks: bool = True  # server-side refusal fallback beta (works with streaming; set false if the API rejects it)
     data_dir: str = _default_data_dir()
     # Where the dataset is read from. Azure sets "postgres"; "csv" is for local work and the unit tests.

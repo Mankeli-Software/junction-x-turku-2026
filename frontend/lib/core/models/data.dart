@@ -175,6 +175,23 @@ class CoverageWindowSet extends Equatable {
   List<Object?> get props => [window, nFirstIsolates, options, narrowestEffective];
 }
 
+/// "In short" for a results page (`GET /v1/agent/in-short`): the one line the AI writes from the
+/// page's own numbers, checked on the server. Null text: no checked line came back.
+class InShort extends Equatable {
+  const InShort({this.text, this.builtFrom = const []});
+
+  factory InShort.fromJson(Json j) => InShort(
+    text: j['text'] as String?,
+    builtFrom: (j['built_from'] as List? ?? const []).cast<String>(),
+  );
+
+  final String? text;
+  final List<String> builtFrom;
+
+  @override
+  List<Object?> get props => [text, builtFrom];
+}
+
 class Coverage extends Equatable {
   const Coverage({
     required this.ward,

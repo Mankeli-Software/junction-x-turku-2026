@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../catalog/widgets/alert_card.dart';
 import '../../catalog/widgets/case_list.dart';
 import '../../catalog/widgets/epi_curve.dart';
+import '../../catalog/widgets/in_short.dart';
 import '../../catalog/widgets/sampling_volume.dart';
 import '../../core/format.dart';
 import '../../core/models/alerts.dart';
@@ -163,6 +164,10 @@ class _InvestigationState extends State<_Investigation> {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: Text(_paragraph(d), style: AmrText.body(compact ? 15 : 16, height: 1.5)),
+        ),
+        AiInShort(
+          query: AlertDetailQuery(alertId: a.alertId),
+          fetch: (repo, q) => repo.alertInShort(q),
         ),
         EpiCurveView(detail: d, compact: compact),
         if (compact && d.volume.isNotEmpty)

@@ -325,6 +325,33 @@ class SpreadingQuery extends Equatable implements AsOfQuery<SpreadingQuery> {
   List<Object?> get props => [window, wards];
 }
 
+/// The infection control page's "In short" (`GET /v1/agent/in-short/spreading`): the resistant
+/// type shown and the ward the page leads with (none when no ward is above its usual level).
+class SpreadingInShortQuery extends Equatable implements AsOfQuery<SpreadingInShortQuery> {
+  const SpreadingInShortQuery({
+    required this.phenotype,
+    this.ward,
+    this.window = const WindowSpec(),
+  });
+
+  final Phenotype phenotype;
+  final Ward? ward;
+  final WindowSpec window;
+
+  @override
+  SpreadingInShortQuery resolve(DateTime asOf) =>
+      SpreadingInShortQuery(phenotype: phenotype, ward: ward, window: window.resolve(asOf));
+
+  @override
+  Json toQuery() => {
+    ...window.toQuery(),
+    ...query({'phenotype': phenotype, 'ward': ward}),
+  };
+
+  @override
+  List<Object?> get props => [phenotype, ward, window];
+}
+
 class SpreadingRow extends Equatable {
   const SpreadingRow({
     required this.ward,

@@ -6,6 +6,8 @@ import 'package:amiright/features/chat/widgets/chat_blocks.dart';
 import 'package:amiright/features/chat/widgets/chat_history.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/canned_agent.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +37,7 @@ Future<void> open(
     AmrApp(
       session: session,
       transport: FixtureTransport(latency: Duration.zero),
+      agent: CannedAgent.new,
     ),
   );
   await tester.pumpAndSettle();

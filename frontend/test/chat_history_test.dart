@@ -1,4 +1,7 @@
+import 'package:amiright/catalog/default_catalog.dart';
+import 'package:amiright/features/chat/agent/answer_surface.dart';
 import 'package:amiright/features/chat/agent/chat_agent.dart';
+import 'package:amiright/features/chat/answer_catalog.dart';
 import 'package:amiright/features/chat/chat_cubit.dart';
 import 'package:amiright/features/chat/chat_models.dart';
 import 'package:amiright/session/session_cubit.dart';
@@ -10,7 +13,7 @@ class _EchoAgent implements ChatAgent {
   @override
   Stream<AgentEvent> answer(String question, ChatContext context) => Stream.fromIterable([
     const AgentHeader(),
-    AgentPart(InShortPart('About: $question')),
+    ...AnswerSurface().add(InShortPart('About: $question')),
     const AgentActions([]),
   ]);
 }
@@ -23,7 +26,8 @@ void main() {
     session = await SessionCubit.restore();
   });
 
-  ChatCubit cubit() => ChatCubit(_EchoAgent.new, session);
+  ChatCubit cubit() =>
+      ChatCubit(_EchoAgent.new, session, catalog: buildGenUiCatalog(buildCatalog()));
 
   List<String> questions(ChatState s) =>
       s.entries.whereType<UserEntry>().map((e) => e.text).toList();
@@ -70,7 +74,84 @@ void main() {
     expect(questions(again.state), ['Is trimethoprim still OK?']);
     final answer = again.state.lastAnswer!;
     expect(answer.streaming, isFalse);
-    expect((answer.parts.single as InShortPart).text, 'About: Is trimethoprim still OK?');
+    expect(answer.parts.single['text'], 'About: Is trimethoprim still OK?');
+    // The saved answer is back on a live surface.
+    expect(again.surfaces.activeSurfaceIds, [answer.surfaceId]);
     expect(again.state.history.single.title, 'What is causing UTIs now?');
   });
+
+  test('an answer saved as parts by the old app comes back as A2UI components', () {
+    final entry =
+        ChatEntry.fromJson({
+              't': 'answer',
+              'id': 1,
+              'parts': [
+                {
+                  't': 'widget',
+                  'placement': {
+                    'widget': 'OrganismMix',
+                    'params': {'ward': 'URO'},
+                  },
+                },
+                {'t': 'inShort', 'text': 'E. coli leads.'},
+              ],
+            })
+            as AnswerEntry;
+    expect(entry.parts.map((c) => c['component']), ['OrganismMix', 'InShort']);
+    expect(entry.widgets.single.params, {'ward': 'URO'});
+  });
+
+  test(
+    'each question carries the conversation so far, so a short reply has its question',
+    () async {
+      final agent = _RecordingAgent();
+      final chat = ChatCubit(() => agent, session, catalog: buildGenUiCatalog(buildCatalog()));
+      await chat.send('my patient has an infection');
+      final answer = chat.state.lastAnswer!;
+      await chat.choose(answer.id, answer.parts.single['id']! as String, 'At home');
+      expect(agent.contexts.first.history, isEmpty);
+      expect(agent.contexts.last.history, [
+        ('user', 'my patient has an infection'),
+        (
+          'assistant',
+          'Asked: Where did it start? Options: At home | In hospital (chosen: At home)',
+        ),
+      ]);
+    },
+  );
+
+  test('a chosen answer to a clarifying question is marked on the surface', () async {
+    final chat = ChatCubit(_ClarifyAgent.new, session, catalog: buildGenUiCatalog(buildCatalog()));
+    await chat.send('my patient has an infection');
+    final first = chat.state.lastAnswer!;
+    final clarify = first.parts.single;
+    expect(clarify['component'], AnswerComponents.clarify);
+    await chat.choose(first.id, clarify['id']! as String, 'At home');
+    final marked = chat.state.entries.whereType<AnswerEntry>().first.parts.single;
+    expect(marked['chosen'], 'At home');
+    final definition = chat.surfaces.contextFor(first.surfaceId!).definition.value!;
+    expect(definition.components[clarify['id']]!.properties['chosen'], 'At home');
+    expect(chat.state.entries.whereType<UserEntry>().last.short, isTrue);
+  });
+}
+
+/// Asks where the infection started.
+class _ClarifyAgent implements ChatAgent {
+  @override
+  Stream<AgentEvent> answer(String question, ChatContext context) => Stream.fromIterable([
+    const AgentHeader(),
+    ...AnswerSurface().add(const ClarifyPart('Where did it start?', ['At home', 'In hospital'])),
+    const AgentActions([]),
+  ]);
+}
+
+/// Asks where the infection started, and remembers what it was sent.
+class _RecordingAgent extends _ClarifyAgent {
+  final contexts = <ChatContext>[];
+
+  @override
+  Stream<AgentEvent> answer(String question, ChatContext context) {
+    contexts.add(context);
+    return super.answer(question, context);
+  }
 }

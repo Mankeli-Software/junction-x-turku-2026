@@ -143,8 +143,8 @@ class BuildingCard extends StatelessWidget {
   }
 }
 
-/// A question back with tappable answers (ClarifyingQuestion). The first option is the likely
-/// one and is drawn filled; once chosen, the choice stays highlighted.
+/// A question back with tappable answers (ClarifyingQuestion). Every option looks the same
+/// until one is tapped, so nothing seems chosen in advance; then the choice stays highlighted.
 class ClarifyCard extends StatelessWidget {
   const ClarifyCard({
     super.key,
@@ -167,9 +167,7 @@ class ClarifyCard extends StatelessWidget {
         AmrButton(
           label: options[i],
           size: AmrButtonSize.lg,
-          variant: (chosen ?? options.first) == options[i]
-              ? AmrButtonVariant.primary
-              : AmrButtonVariant.soft,
+          variant: chosen == options[i] ? AmrButtonVariant.primary : AmrButtonVariant.soft,
           expand: compact,
           fontWeight: FontWeight.w400,
           onPressed: chosen == null && onChoose != null ? () => onChoose!(options[i]) : null,

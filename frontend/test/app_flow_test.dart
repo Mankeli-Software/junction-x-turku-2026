@@ -5,6 +5,8 @@ import 'package:amiright/session/session_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/canned_agent.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -28,6 +30,7 @@ void main() {
       AmrApp(
         session: session,
         transport: FixtureTransport(latency: Duration.zero),
+        agent: CannedAgent.new,
       ),
     );
     await tester.pumpAndSettle();
@@ -81,6 +84,7 @@ void main() {
       AmrApp(
         session: session,
         transport: FixtureTransport(latency: Duration.zero),
+        agent: CannedAgent.new,
       ),
     );
     await tester.pumpAndSettle();
@@ -128,6 +132,7 @@ void main() {
       AmrApp(
         session: session,
         transport: FixtureTransport(latency: Duration.zero),
+        agent: CannedAgent.new,
       ),
     );
     await tester.pumpAndSettle();

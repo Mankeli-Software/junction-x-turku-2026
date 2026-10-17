@@ -7,8 +7,8 @@ from datetime import date
 import anthropic
 import httpx2
 import pytest
-from app.agent import loop, route
-from app.agent.llm import FakeClient, FakeTurn, ToolUse, demo_script
+from app.agent import a2ui, loop, route
+from app.agent.llm import ToolUse
 from app.agent.numbers import allowed_values, unsupported
 from app.agent.schema import AgentProfile, AgentRequest
 from app.agent.tools import DATA_TOOLS, UI_TOOLS, tool_definitions
@@ -16,6 +16,7 @@ from app.config import settings
 from app.main import app
 from app.registry import REGISTRY
 from app.widgets.catalog import CATALOG
+from fake_llm import FakeClient, FakeTurn, demo_script
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -251,18 +252,65 @@ def parse_sse(text: str) -> list[tuple[str, dict]]:
     return out
 
 
-def test_the_route_streams_server_sent_events_with_the_right_headers(monkeypatch):
-    monkeypatch.setattr(settings, "agent_fake", True)
+@pytest.fixture
+def scripted(monkeypatch):
+    """The route plays the fixed doctor screen instead of calling Claude."""
+    monkeypatch.setattr(route, "make_client", lambda: FakeClient(demo_script))
+
+
+def test_the_route_streams_server_sent_events_with_the_right_headers(scripted):
     r = client.post("/v1/agent/screen", json={"message": "describe", "profile": PROFILE.model_dump()})
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
     assert r.headers["cache-control"] == "no-cache" and r.headers["x-accel-buffering"] == "no"
     events = parse_sse(r.text)
-    assert [d["widget"] for e, d in events if e == "widget"] == ["ContextChips", "OrganismMix", "CoverageRanking"]
+    assert [c["component"] for c in a2ui_parts(events)] == ["ContextChips", "OrganismMix", "CoverageRanking", "InShort"]
     assert events[-1][0] == "done"
 
 
+def a2ui_parts(events) -> list[dict]:
+    """The parts of the answer surface in order, without the root."""
+    return [c for e, d in events if e == "a2ui" and "updateComponents" in d for c in d["updateComponents"]["components"] if c["id"] != "root"]
+
+
+def test_the_answer_is_one_a2ui_surface_built_part_by_part(scripted):
+    events = parse_sse(client.post("/v1/agent/screen", json={"message": "describe", "profile": PROFILE.model_dump()}).text)
+    assert not {"widget", "in_short", "clarify"} & set(kinds(events))
+    messages = [d for e, d in events if e == "a2ui"]
+    assert all(m["version"] == "v0.9" for m in messages)
+    create = messages[0]["createSurface"]
+    assert create["catalogId"] == a2ui.CATALOG_ID
+    assert all(m["updateComponents"]["surfaceId"] == create["surfaceId"] for m in messages[1:])
+    roots = [c for m in messages[1:] for c in m["updateComponents"]["components"] if c["id"] == "root"]
+    assert {r["component"] for r in roots} == {"Answer"}
+    assert roots[-1]["children"] == [c["id"] for c in a2ui_parts(events)]  # every part, in order
+    chips = a2ui_parts(events)[0]
+    assert chips["ward"] == "URO" and chips["as_of"] == "2026-09-27"  # the params are the properties
+    assert kinds(events).index("header") < kinds(events).index("a2ui")
+
+
+def test_clarify_and_in_short_become_catalog_components():
+    async def go():
+        events = [("header", {}), ("clarify", {"question": "Where?", "options": ["Home", "Hospital"]}), ("in_short", {"text": None}), ("done", {})]
+
+        async def source():
+            for e in events:
+                yield e
+
+        return [e async for e in a2ui.to_a2ui(source(), a2ui.AnswerSurface("s1"))]
+
+    parts = a2ui_parts(asyncio.run(go()))
+    assert parts == [
+        {"question": "Where?", "options": ["Home", "Hospital"], "id": "p1", "component": "Clarify"},
+        {"id": "p2", "component": "InShort"},  # no text: the app shows its placeholder
+    ]
+
+
+def test_no_widget_param_collides_with_the_a2ui_keys():
+    for name, model in CATALOG.items():
+        assert not {"id", "component", "children"} & set(model.model_fields), name
+
+
 def test_without_a_key_the_route_answers_503_and_the_rest_of_the_api_works(monkeypatch):
-    monkeypatch.setattr(settings, "agent_fake", False)
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     r = client.post("/v1/agent/screen", json={"message": "hello"})
     assert r.status_code == 503 and "no API key" in r.json()["detail"]
@@ -313,3 +361,154 @@ def test_a_connection_error_never_logs_the_key(caplog):
         events = asyncio.run(go())
     assert secret not in caplog.text and secret not in json.dumps(events)
     assert "RuntimeError" in caplog.text  # the type is logged, which is enough to find the cause
+
+
+# ---- "In short" for the results pages---------------------------------------------------------
+
+SUMMARY_Q = {"ward": "URO", "infection_type": "uti", "sex": "F", "age_band": "75+", "onset": "hospital"}
+
+
+def line_client(*texts: str) -> FakeClient:
+    """Writes each text in turn, one in_short call per turn."""
+    return FakeClient(lambda _: [FakeTurn([use("in_short", f"s{i}", text=t)], stop_reason="tool_use") for i, t in enumerate(texts)])
+
+
+def write_line(fake: FakeClient, kind=None, q=None):
+    from app.agent import summary
+    from app.models.data import CoverageQuery
+
+    return asyncio.run(summary.write(kind or summary.COVERAGE, q or CoverageQuery(**SUMMARY_Q), fake))
+
+
+def sent_results(fake: FakeClient) -> dict:
+    return json.loads(fake.calls[0]["messages"][0]["content"])
+
+
+def test_in_short_route_writes_a_checked_line(monkeypatch):
+    from app.agent import summary
+
+    summary._cache.clear()
+    fake = line_client("E. coli leads here.")
+    monkeypatch.setattr(summary, "make_summary_client", lambda: fake)
+    r = client.get("/v1/agent/in-short", params=SUMMARY_Q)
+    assert r.status_code == 200
+    assert r.json() == {"text": "E. coli leads here.", "built_from": ["coverage", "organism mix", "alerts"]}
+    cov = client.get("/v1/coverage", params=SUMMARY_Q).json()
+    assert sent_results(fake)["coverage"] == cov  # the same numbers as the page's hero and table
+
+
+def test_the_alert_line_is_built_from_the_alert_page_and_its_linked_wards():
+    from app.agent import summary
+    from app.models.alerts import AlertDetailQuery
+
+    alert = next(a for a in client.get("/v1/alerts", params={"status": "active"}).json()["alerts"] if a["ward"])
+    fake = line_client("Looks real; check the isolates.")
+    out = write_line(fake, summary.ALERT, AlertDetailQuery(alert_id=alert["alert_id"]))
+    assert out.text == "Looks real; check the isolates."
+    sent = sent_results(fake)
+    assert sent["alert_page"] == client.get("/v1/alerts/detail", params={"alert_id": alert["alert_id"]}).json()
+    assert sent["linked_wards"]["ward"] == alert["ward"]
+    assert out.built_from == ["alert detail", "sampling volume", "linked wards"]
+
+
+def test_an_unknown_alert_gives_no_line_and_no_model_call():
+    from app.agent import summary
+    from app.models.alerts import AlertDetailQuery
+
+    fake = line_client("Anything.")
+    assert write_line(fake, summary.ALERT, AlertDetailQuery(alert_id="no-such-alert")).text is None
+    assert fake.calls == []
+
+
+def test_the_spreading_line_uses_the_pages_own_counts_for_its_ward():
+    from app.agent import summary
+
+    fake = line_client("Urology is above its usual level.")
+    write_line(fake, summary.SPREADING, summary.SpreadingInShortQuery(phenotype="ESBL", ward="URO"))
+    sent = sent_results(fake)
+    series = client.get("/v1/spreading/series").json()
+    row = next(r for r in series["rows"] if r["ward"] == "URO" and r["phenotype"] == "ESBL")
+    assert sent["focus"]["last_4_weeks"] == sum(row["weekly"][-4:])  # the hero's count
+    assert sent["focus"]["usual_4_weeks"] == round(row["normal_weekly"] * 4, 1)
+    assert {r["phenotype"] for r in sent["wards"]} == {"ESBL"}
+    assert sent["linked_wards"]["ward"] == "URO"
+
+
+def test_without_a_ward_the_spreading_line_has_no_focus():
+    from app.agent import summary
+
+    fake = line_client("No ward is above its usual level for VRE.")
+    write_line(fake, summary.SPREADING, summary.SpreadingInShortQuery(phenotype="VRE"))
+    sent = sent_results(fake)
+    assert sent["focus"] is None and sent["linked_wards"] is None
+
+
+def test_in_short_with_an_invented_number_is_asked_again_once():
+    fake = line_client("NIT covers 123% of these.", "NIT covers most of these.")
+    assert write_line(fake).text == "NIT covers most of these."
+    assert "123" in json.dumps(fake.calls[1]["messages"][-1])  # the model was told which number
+
+
+def test_in_short_with_two_invented_numbers_is_dropped():
+    assert write_line(line_client("NIT covers 123%.", "NIT covers 456%.")).text is None
+
+
+def test_in_short_sees_only_the_in_short_tool_and_the_results():
+    fake = line_client("E. coli leads.")
+    write_line(fake)
+    (call,) = fake.calls
+    assert [t["name"] for t in call["tools"]] == ["in_short"]
+    sent = json.loads(call["messages"][0]["content"])
+    assert set(sent) == {"patient", "coverage", "organisms", "alerts", "names"}
+    assert sent["names"]["drugs"]["NIT"] == "nitrofurantoin" and sent["names"]["wards"]["SURG"] == "Surgery"
+    assert sent["coverage"]["recent"]["window"]["as_of"] == "2026-09-27"
+
+
+def test_in_short_is_remembered_per_query():
+    from app.agent import summary
+    from app.models.data import CoverageQuery
+
+    summary._cache.clear()
+    fake = line_client("E. coli leads.")
+    q = CoverageQuery(**SUMMARY_Q)
+    first = asyncio.run(summary.in_short(summary.COVERAGE, q, fake))
+    again = asyncio.run(summary.in_short(summary.COVERAGE, q, line_client("Something else.")))
+    assert first.text == again.text == "E. coli leads."
+
+
+def test_in_short_without_a_key_answers_503(monkeypatch):
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    assert client.get("/v1/agent/in-short", params=SUMMARY_Q).status_code == 503
+    assert client.get("/v1/agent/in-short/alert", params={"alert_id": "x"}).status_code == 503
+    assert client.get("/v1/agent/in-short/spreading").status_code == 503
+
+
+# ---- conversation history ----------------------------------------------------------------------
+
+
+def test_history_goes_in_the_user_turn_not_the_cached_prefix():
+    from app.agent.schema import HistoryTurn
+
+    history = [
+        HistoryTurn(role="user", text="My patient has an infection"),
+        HistoryTurn(role="assistant", text="Asked: Which ward? Options: Surgery | Urology"),
+    ]
+    fake = FakeClient(lambda _: [FakeTurn(stop_reason="end_turn")])
+    collect(req("Surgery", history=history), fake)
+    sent = json.loads(fake.calls[0]["messages"][0]["content"])
+    assert sent["history"] == [t.model_dump() for t in history]
+    assert sent["message"] == "Surgery"
+    from app.agent.prompt import SYSTEM_PROMPT
+
+    assert fake.calls[0]["system"] == SYSTEM_PROMPT  # the cached prefix stays the same for every request
+
+
+def test_without_history_the_user_turn_has_no_history_key():
+    fake = FakeClient(lambda _: [FakeTurn(stop_reason="end_turn")])
+    collect(req(), fake)
+    assert "history" not in json.loads(fake.calls[0]["messages"][0]["content"])
+
+
+def test_a_too_long_history_is_rejected():
+    turns = [{"role": "user", "text": "x"}] * 25
+    assert client.post("/v1/agent/screen", json={"message": "hi", "history": turns}).status_code == 422

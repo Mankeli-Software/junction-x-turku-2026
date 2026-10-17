@@ -81,6 +81,7 @@ def user_turn(req: AgentRequest) -> str:
             "ward": req.ward,
             "wards": req.wards,
             "profile": req.profile.model_dump(exclude_none=True) if req.profile else None,
+            **({"history": [t.model_dump() for t in req.history]} if req.history else {}),
             "message": req.message,
         },
         ensure_ascii=False,

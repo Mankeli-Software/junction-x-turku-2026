@@ -20,6 +20,7 @@ class QueryView<Q extends AsOfQuery<Q>, T> extends StatefulWidget {
     required this.builder,
     this.loading,
     this.errorMessage = 'Could not load this right now.',
+    this.error,
   });
 
   final Q query;
@@ -27,6 +28,9 @@ class QueryView<Q extends AsOfQuery<Q>, T> extends StatefulWidget {
   final Widget Function(BuildContext context, T data) builder;
   final Widget? loading;
   final String errorMessage;
+
+  /// Replaces the inline error and its retry, for content that can go without (the AI's line).
+  final Widget Function(BuildContext context, Object error)? error;
 
   @override
   State<QueryView<Q, T>> createState() => _QueryViewState<Q, T>();
@@ -77,6 +81,11 @@ class _QueryViewState<Q extends AsOfQuery<Q>, T> extends State<QueryView<Q, T>> 
               opacity: s.loading ? 0.55 : 1,
               duration: AmrMotion.base,
               child: widget.builder(context, s.data as T),
+            );
+          } else if (s.error != null && widget.error != null) {
+            child = KeyedSubtree(
+              key: const ValueKey('error'),
+              child: widget.error!(context, s.error!),
             );
           } else if (s.error != null) {
             final e = s.error;

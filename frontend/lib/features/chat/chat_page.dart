@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -55,6 +57,16 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final _scroll = ScrollController();
   final _scaffold = GlobalKey<ScaffoldState>();
+
+  /// The latest question and its answer: a new answer is read from here down, so this is what
+  /// scrolls to the top (under the bar), never the bottom of a half-built answer.
+  final _lastTurn = GlobalKey();
+
+  /// The state on screen when a new one arrives (the listener only gets the new one).
+  late ChatState _shown = context.read<ChatCubit>().state;
+
+  /// The pinned top bar; on narrow screens the conversation scrolls under it.
+  final _bar = GlobalKey();
   late final CatalogActions _actions = _InChatActions(
     context.read<CatalogActions>(),
     context.read<ChatCubit>(),
@@ -63,6 +75,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showLastTurn());
     _askFromUrl();
   }
 
@@ -92,19 +105,68 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
-  void _toBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (!_scroll.hasClients) return;
-    _scroll.animateTo(
-      _scroll.position.maxScrollExtent,
-      duration: AmrMotion.slow,
-      curve: AmrMotion.curve,
-    );
+  /// Space kept between the top of the view and the latest question.
+  static const _turnTopGap = 16.0;
+
+  /// The latest turn's content, without the space that makes the turn a screen tall.
+  final _lastTurnContent = GlobalKey();
+
+  /// A laid-out height; never call it while building.
+  double _height(GlobalKey key) {
+    final box = key.currentContext?.findRenderObject();
+    return box is RenderBox && box.attached && box.hasSize ? box.size.height : 0;
+  }
+
+  /// How much of the conversation the pinned bar covers: all of it on narrow screens, where
+  /// the conversation scrolls under the bar, none when wide. Read after layout.
+  double get _barOver => _wide ? 0 : _height(_bar);
+  bool _wide = false;
+
+  /// [_barOver] as of the last frame, for building.
+  double _barHeight = 0;
+
+  void _measureBar() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    final h = _barOver;
+    if (mounted && h != _barHeight) setState(() => _barHeight = h);
   });
+
+  /// Where the latest question sits just under the bar: the turn is the scroll view's center,
+  /// so that is a fixed offset, whatever loads above it later. Read after layout.
+  double get _turnTop => -(_barOver + _turnTopGap);
+
+  /// A new question becomes the latest turn: keep the view where it was for one frame, then
+  /// bring the question to the top, so its answer streams in below it, where the reader is.
+  /// Opening a conversation shows its latest question at once.
+  void _onTurn(ChatState before, ChatState after) {
+    final sameChat = before.currentId == after.currentId && before.entries.isNotEmpty;
+    // In the old layout the new question starts right under the old latest turn.
+    final shift = _height(_lastTurnContent) + (context.isCompact ? 18 : 28);
+    final from = _scroll.hasClients ? _scroll.offset : 0.0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!sameChat) return _showLastTurn();
+      if (!mounted || !_scroll.hasClients || after.entries.isEmpty) return;
+      final p = _scroll.position;
+      _scroll.jumpTo((from - shift).clamp(p.minScrollExtent, p.maxScrollExtent));
+      _scroll.animateTo(
+        _turnTop.clamp(p.minScrollExtent, p.maxScrollExtent),
+        duration: AmrMotion.slow,
+        curve: AmrMotion.curve,
+      );
+    });
+  }
+
+  /// The latest question at the top, at once (a conversation opened or the page loaded).
+  void _showLastTurn() {
+    if (!mounted || !_scroll.hasClients) return;
+    final p = _scroll.position;
+    _scroll.jumpTo(_turnTop.clamp(p.minScrollExtent, p.maxScrollExtent));
+  }
 
   @override
   Widget build(BuildContext context) {
+    _measureBar();
     final compact = context.isCompact;
-    final wide = context.screenWidth >= 1200;
+    final wide = _wide = context.screenWidth >= 1200;
     final role = context.select((SessionCubit c) => c.state.user?.role);
     final cubit = context.read<ChatCubit>();
     final side = fluid(context, 16, 4, 48);
@@ -127,68 +189,97 @@ class _ChatPageState extends State<ChatPage> {
         body: AmrBackground(
           glowHeight: 520,
           child: BlocConsumer<ChatCubit, ChatState>(
-            listenWhen: (a, b) =>
-                a.currentId != b.currentId ||
-                a.entries.length != b.entries.length ||
-                a.lastAnswer?.parts.length != b.lastAnswer?.parts.length ||
-                a.lastAnswer?.streaming != b.lastAnswer?.streaming,
-            listener: (_, _) => _toBottom(),
+            // Only a new question moves the view; parts streaming in never do.
+            listenWhen: (a, b) {
+              _shown = a;
+              return a.currentId != b.currentId || a.entries.length < b.entries.length;
+            },
+            listener: (_, b) => _onTurn(_shown, b),
             builder: (context, state) {
               final empty = state.entries.isEmpty;
-              final suggestions = state.lastAnswer?.suggestions.isNotEmpty ?? false
-                  ? state.lastAnswer!.suggestions
-                  : roleQuestions(role);
+              final lastQuestion = state.entries.lastIndexWhere((e) => e is UserEntry);
+              final gap = compact ? 18.0 : 28.0;
+              final bottomSpace = compact ? 200.0 : 220.0; // room above the composer
               Widget conversation(Widget topBar) => Stack(
                 children: [
                   Positioned.fill(
-                    child: SingleChildScrollView(
-                      controller: _scroll,
-                      child: SafeArea(
-                        bottom: false,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            topBar,
+                    child: LayoutBuilder(
+                      builder: (context, viewport) {
+                        Widget column(List<Widget> children, {double top = 0, double bottom = 0}) =>
                             Center(
                               child: ConstrainedBox(
                                 constraints: const BoxConstraints(maxWidth: 1040),
                                 child: Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                    side,
-                                    compact ? 8 : 24,
-                                    side,
-                                    compact ? 200 : 220,
-                                  ),
+                                  padding: EdgeInsets.fromLTRB(side, top, side, bottom),
                                   child: ColumnGap(
-                                    [
-                                      if (!wide)
-                                        _ChatBar(
-                                          canStartNew: !empty,
-                                          hasHistory: state.chats.isNotEmpty,
-                                          onHistory: () => _scaffold.currentState?.openDrawer(),
-                                          onNew: cubit.newChat,
-                                        ),
-                                      if (empty)
-                                        const _Welcome()
-                                      else
-                                        for (final e in state.entries)
-                                          switch (e) {
-                                            UserEntry() => UserBubble(e.text, short: e.short),
-                                            AnswerEntry() => ChatAnswer(
-                                              key: ValueKey('${state.currentId}-${e.id}'),
-                                              entry: e,
-                                            ),
-                                          },
-                                    ],
-                                    gap: compact ? 18 : 28,
+                                    children,
+                                    gap: gap,
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
                                   ),
                                 ),
                               ),
+                            );
+                        final split = math.max(0, lastQuestion);
+                        // The latest turn is the scroll view's center: offset 0 is its question,
+                        // and what comes before grows upward, so earlier answers that are still
+                        // loading never push it down. It is at least a screen tall, so its
+                        // question can sit at the top while the answer builds below.
+                        return CustomScrollView(
+                          controller: _scroll,
+                          center: empty ? null : _lastTurn,
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: SafeArea(
+                                bottom: false,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    topBar,
+                                    column(
+                                      [
+                                        if (!wide)
+                                          _ChatBar(
+                                            canStartNew: !empty,
+                                            hasHistory: state.chats.isNotEmpty,
+                                            onHistory: () => _scaffold.currentState?.openDrawer(),
+                                            onNew: cubit.newChat,
+                                          ),
+                                        if (empty)
+                                          const _Welcome()
+                                        else
+                                          for (final e in state.entries.take(split))
+                                            _entry(e, state.currentId),
+                                      ],
+                                      top: compact ? 8 : 24,
+                                      bottom: empty ? 0 : gap,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
+                            if (!empty)
+                              SliverToBoxAdapter(
+                                key: _lastTurn,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: math.max(
+                                      0,
+                                      viewport.maxHeight - _barHeight - _turnTopGap - bottomSpace,
+                                    ),
+                                  ),
+                                  child: KeyedSubtree(
+                                    key: _lastTurnContent,
+                                    child: column([
+                                      for (final e in state.entries.skip(split))
+                                        _entry(e, state.currentId),
+                                    ]),
+                                  ),
+                                ),
+                              ),
+                            SliverToBoxAdapter(child: SizedBox(height: bottomSpace)),
                           ],
-                        ),
-                      ),
+                        );
+                      },
                     ),
                   ),
                   Positioned(
@@ -217,7 +308,9 @@ class _ChatPageState extends State<ChatPage> {
                                     )
                                   : Composer(
                                       key: ValueKey(state.currentId),
-                                      suggestions: state.busy ? const [] : suggestions,
+                                      // Only before the first question: once the chat has
+                                      // started, the follow-ups sit under each answer.
+                                      suggestions: empty ? roleQuestions(role) : const [],
                                       hint: empty
                                           ? 'Ask anything about resistance on your wards…'
                                           : 'Ask a follow-up…',
@@ -233,6 +326,7 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               );
               return StickyTopBar(
+                barKey: _bar,
                 bar: TopBar(
                   breadcrumb: Breadcrumb(const ['Home', 'Ask'], onTapFirst: () => goHome(context)),
                 ),
@@ -271,6 +365,11 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 }
+
+Widget _entry(ChatEntry e, String conversation) => switch (e) {
+  UserEntry() => UserBubble(e.text, short: e.short),
+  AnswerEntry() => ChatAnswer(key: ValueKey('$conversation-${e.id}'), entry: e),
+};
 
 /// Narrow screens: "Chats" opens the history drawer, "New chat" starts over.
 class _ChatBar extends StatelessWidget {

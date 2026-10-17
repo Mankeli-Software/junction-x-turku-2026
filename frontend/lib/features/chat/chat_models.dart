@@ -2,12 +2,14 @@ import 'package:equatable/equatable.dart';
 
 import '../../core/models/common.dart';
 import '../../core/models/dashboard.dart';
+import 'answer_catalog.dart';
 
-/// One piece of an answer. Mirrors what an A2UI surface carries: catalog widgets by name and
-/// params, the one free-text summary, and the interactive pieces. The AI never sends numbers.
+/// One piece of an answer, as the scripted agent builds it. On screen every part is an A2UI
+/// component of the answer surface ([component]); the AI never sends numbers.
 sealed class AnswerPart extends Equatable {
   const AnswerPart();
 
+  /// A part saved by an earlier version of the app, which kept parts instead of components.
   factory AnswerPart.fromJson(Json j) => switch (j['t']) {
     'widget' => WidgetPart(WidgetPlacement.fromJson(j['placement']! as Json)),
     'clarify' => ClarifyPart(
@@ -18,15 +20,14 @@ sealed class AnswerPart extends Equatable {
     _ => InShortPart(j['text'] as String?),
   };
 
-  Json toJson() => switch (this) {
-    WidgetPart(:final placement) => {'t': 'widget', 'placement': placement.toJson()},
-    InShortPart(:final text) => {'t': 'inShort', 'text': text},
-    ClarifyPart(:final question, :final options, :final chosen) => {
-      't': 'clarify',
-      'question': question,
-      'options': options,
-      'chosen': chosen,
-    },
+  /// (A2UI component name, properties).
+  (String, Json) get component => switch (this) {
+    WidgetPart(:final placement) => (placement.widget, placement.params),
+    InShortPart(:final text) => (AnswerComponents.inShort, {'text': ?text}),
+    ClarifyPart(:final question, :final options, :final chosen) => (
+      AnswerComponents.clarify,
+      {'question': question, 'options': options, 'chosen': ?chosen},
+    ),
   };
 }
 
@@ -50,15 +51,13 @@ class InShortPart extends AnswerPart {
   List<Object?> get props => [text];
 }
 
-/// A question back with tappable answers; the first option is the likely one.
+/// A question back with tappable answers, the likeliest first; none is chosen until tapped.
 class ClarifyPart extends AnswerPart {
   const ClarifyPart(this.question, this.options, {this.chosen});
 
   final String question;
   final List<String> options;
   final String? chosen;
-
-  ClarifyPart choose(String option) => ClarifyPart(question, options, chosen: option);
 
   @override
   List<Object?> get props => [question, options, chosen];
@@ -120,7 +119,11 @@ sealed class ChatEntry extends Equatable {
           j['id']! as int,
           builtFrom: (j['builtFrom'] as List? ?? const []).cast<String>(),
           note: j['note'] as String?,
-          parts: jsonList(j['parts']).map(AnswerPart.fromJson).toList(),
+          surfaceId: j['surfaceId'] as String?,
+          components: j.containsKey('components')
+              ? jsonList(j['components'])
+              : _legacyComponents(jsonList(j['parts']).map(AnswerPart.fromJson)),
+          error: j['error'] as String?,
           actions: jsonList(j['actions']).map(ChatAction.fromJson).toList(),
           suggestions: (j['suggestions'] as List? ?? const []).cast<String>(),
           streaming: false,
@@ -129,6 +132,17 @@ sealed class ChatEntry extends Equatable {
 
   final int id;
 
+  /// Parts from an older save as A2UI components (the root last), shown on a new surface.
+  static List<Json> _legacyComponents(Iterable<AnswerPart> parts) {
+    final ids = <String>[];
+    return [
+      for (final (i, p) in parts.indexed)
+        {...p.component.$2, 'id': (ids..add('p${i + 1}')).last, 'component': p.component.$1},
+      if (ids.isNotEmpty)
+        {'id': AnswerComponents.rootId, 'component': AnswerComponents.root, 'children': ids},
+    ];
+  }
+
   Json toJson() => switch (this) {
     UserEntry(:final text, :final short) => {'t': 'user', 'id': id, 'text': text, 'short': short},
     final AnswerEntry a => {
@@ -136,7 +150,9 @@ sealed class ChatEntry extends Equatable {
       'id': id,
       'builtFrom': a.builtFrom,
       'note': a.note,
-      'parts': [for (final p in a.parts) p.toJson()],
+      'surfaceId': a.surfaceId,
+      'components': a.components,
+      'error': a.error,
       'actions': [for (final x in a.actions) x.toJson()],
       'suggestions': a.suggestions,
       'profile': a.profile?.toQuery(),
@@ -162,7 +178,9 @@ class AnswerEntry extends ChatEntry {
     this.builtFrom = const [],
     this.note,
     this.status,
-    this.parts = const [],
+    this.surfaceId,
+    this.components = const [],
+    this.error,
     this.actions = const [],
     this.suggestions = const [],
     this.streaming = true,
@@ -177,7 +195,16 @@ class AnswerEntry extends ChatEntry {
 
   /// While building: "checking coverage on Urology…".
   final String? status;
-  final List<AnswerPart> parts;
+
+  /// The A2UI surface that shows the answer; null until its first part arrives.
+  final String? surfaceId;
+
+  /// The surface's components, the root included: what is saved, and what rebuilds the surface
+  /// when the conversation is opened again.
+  final List<Json> components;
+
+  /// Why the answer stopped early (a refusal, a timeout); the parts so far stay.
+  final String? error;
   final List<ChatAction> actions;
 
   /// Next questions for the composer.
@@ -192,7 +219,9 @@ class AnswerEntry extends ChatEntry {
     String? note,
     String? status,
     bool clearStatus = false,
-    List<AnswerPart>? parts,
+    String? surfaceId,
+    List<Json>? components,
+    String? error,
     List<ChatAction>? actions,
     List<String>? suggestions,
     bool? streaming,
@@ -202,15 +231,72 @@ class AnswerEntry extends ChatEntry {
     builtFrom: builtFrom ?? this.builtFrom,
     note: note ?? this.note,
     status: clearStatus ? null : (status ?? this.status),
-    parts: parts ?? this.parts,
+    surfaceId: surfaceId ?? this.surfaceId,
+    components: components ?? this.components,
+    error: error ?? this.error,
     actions: actions ?? this.actions,
     suggestions: suggestions ?? this.suggestions,
     streaming: streaming ?? this.streaming,
     profile: profile ?? this.profile,
   );
 
+  /// The parts on the surface, in order (the root is not one).
+  List<Json> get parts {
+    final root = components.where((c) => c['id'] == AnswerComponents.rootId).firstOrNull;
+    final byId = {for (final c in components) c['id']: c};
+    return [
+      for (final id in (root?['children'] as List? ?? const []))
+        if (byId[id] case final Json c) c,
+    ];
+  }
+
+  /// What this answer showed or asked, in words, for the agent's history of the conversation.
+  String describe() {
+    String params(Json c) => [
+      for (final e in c.entries)
+        if (!const {'id', 'component', 'as_of', 'window'}.contains(e.key)) '${e.key}=${e.value}',
+    ].join(', ');
+    final lines = [
+      for (final c in parts)
+        switch (c['component']) {
+          AnswerComponents.clarify =>
+            'Asked: ${c['question']} Options: ${(c['options'] as List? ?? const []).join(' | ')}'
+                '${c['chosen'] == null ? '' : ' (chosen: ${c['chosen']})'}',
+          AnswerComponents.inShort => 'In short: ${c['text'] ?? '(none)'}',
+          final type => 'Showed $type(${params(c)})',
+        },
+      if (error != null) 'Stopped: $error',
+    ];
+    return lines.isEmpty ? '(no answer)' : lines.join('\n');
+  }
+
+  /// The catalog widgets on the surface, as placements (for pinning and follow-ups).
+  List<WidgetPlacement> get widgets => [
+    for (final c in parts)
+      if (c['component'] case final String type
+          when type != AnswerComponents.inShort && type != AnswerComponents.clarify)
+        WidgetPlacement(
+          widget: type,
+          params: {
+            for (final e in c.entries)
+              if (e.key != 'id' && e.key != 'component') e.key: e.value,
+          },
+        ),
+  ];
+
   @override
-  List<Object?> get props => [id, builtFrom, note, status, parts, actions, suggestions, streaming];
+  List<Object?> get props => [
+    id,
+    builtFrom,
+    note,
+    status,
+    surfaceId,
+    components,
+    error,
+    actions,
+    suggestions,
+    streaming,
+  ];
 }
 
 /// One chat in the history: its entries and when it last changed.

@@ -11,9 +11,12 @@ import '../../ds/ds.dart';
 /// [page] builds the scrolling page and puts the given placeholder where the bar sits at the
 /// top of the content, so the layout keeps the bar's height.
 class StickyTopBar extends StatefulWidget {
-  const StickyTopBar({super.key, required this.bar, required this.page});
+  const StickyTopBar({super.key, required this.bar, required this.page, this.barKey});
 
   final Widget bar;
+
+  /// On the pinned bar (with its safe area), for pages that need its height.
+  final GlobalKey? barKey;
   final Widget Function(BuildContext context, Widget placeholder) page;
 
   @override
@@ -33,7 +36,8 @@ class _StickyTopBarState extends State<StickyTopBar> {
 
   bool _onScroll(ScrollNotification n) {
     if (n.depth == 0 && n.metrics.axis == Axis.vertical) {
-      _scrolled.value = (n.metrics.pixels / _fadeOver).clamp(0.0, 1.0);
+      // extentBefore, not pixels: a scroll view with a center (the chat) starts below zero.
+      _scrolled.value = (n.metrics.extentBefore / _fadeOver).clamp(0.0, 1.0);
     }
     return false;
   }
@@ -59,7 +63,10 @@ class _StickyTopBarState extends State<StickyTopBar> {
             child: ValueListenableBuilder<double>(
               valueListenable: _scrolled,
               builder: (context, t, bar) => _Backing(t: t, child: bar!),
-              child: SafeArea(bottom: false, child: widget.bar),
+              child: KeyedSubtree(
+                key: widget.barKey,
+                child: SafeArea(bottom: false, child: widget.bar),
+              ),
             ),
           ),
         ],

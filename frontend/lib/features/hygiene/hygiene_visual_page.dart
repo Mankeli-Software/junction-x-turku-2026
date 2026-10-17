@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../catalog/actions.dart';
 import '../../catalog/widgets/cross_ward_warning.dart';
+import '../../catalog/widgets/in_short.dart';
 import '../../catalog/widgets/spreading_counts.dart';
 import '../../catalog/widgets/ward_status.dart';
 import '../../session/session_cubit.dart';
@@ -231,6 +232,13 @@ class _Content extends StatelessWidget {
     return ColumnGap(
       [
         _Hero(spread: top, phenotype: p, all: allSpreads, series: series),
+        // The AI's line about what the hero leads with (its ward and resistant type); none when
+        // no ward is above usual.
+        if (top?.top case final row?)
+          AiInShort(
+            query: SpreadingInShortQuery(phenotype: row.phenotype, ward: top!.ward),
+            fetch: (repo, q) => repo.spreadingInShort(q),
+          ),
         _WardTiles(spreads: spreads, series: series, phenotype: p, selected: ward),
         _WardDetail(
           key: ValueKey((ward, p)),
