@@ -1,9 +1,9 @@
 from fastapi import HTTPException
 
 from app.datalayer import alerts as real_alerts
+from app.datalayer import spreading as real_spreading
 from app.datalayer import volume as real_volume
 from app.datalayer.store import get_store
-from app.fixtures import alerts as fx
 from app.fixtures.data import window_out
 from app.models.alerts import (
     AlertDetailOut,
@@ -56,7 +56,7 @@ def get_volume(q: VolumeQuery) -> VolumeOut:
     SpreadingOut,
 )
 def get_spreading(q: SpreadingQuery) -> SpreadingOut:
-    return fx.spreading(_win(q), list(q.wards))
+    return real_spreading.spreading(get_store(), q, _win(q))
 
 
 @register(
@@ -67,4 +67,4 @@ def get_spreading(q: SpreadingQuery) -> SpreadingOut:
     WardLinksOut,
 )
 def get_ward_links(q: WardLinksQuery) -> WardLinksOut:
-    return fx.ward_links(q.ward, q.as_of)
+    return real_spreading.ward_links(get_store(), q.ward, q.as_of)
