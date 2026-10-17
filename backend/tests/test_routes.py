@@ -14,6 +14,7 @@ SAMPLES = {
     "get_alert_detail": "?alert_id=sentinel-C0046602-1",
     "get_volume": "?ward=URO",
     "get_spreading": "?wards=ICU",
+    "get_spreading_series": "?weeks=8",
     "get_ward_links": "?ward=URO",
     "get_dashboard": "",
 }
