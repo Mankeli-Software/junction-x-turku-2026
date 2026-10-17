@@ -60,7 +60,8 @@ def test_healthz_follows_the_database(monkeypatch):
 def test_data_status_reports_mismatches(monkeypatch):
     good = dict(db.DATASET_ROWS)
     monkeypatch.setattr("app.main.db.table_counts", lambda: good)
-    assert client.get("/v1/data-status").json()["ok"] is True
+    body = client.get("/v1/data-status").json()
+    assert body["ok"] is True and body["signals"]["source"] in ("precomputed", "computed on demand")
     monkeypatch.setattr("app.main.db.table_counts", lambda: {**good, "patients": 9_999})
     body = client.get("/v1/data-status").json()
     assert body["ok"] is False and body["tables"]["patients"]["actual"] == 9_999

@@ -67,7 +67,24 @@ jobs:
         run: |
           APP=$(az webapp list -g "$RG" --query "[?tags.project=='aei' && tags.env=='demo'].name | [0]" -o tsv)
           echo "APP=$APP" >> "$GITHUB_ENV"
-          az webapp deploy -g "$RG" -n "$APP" --src-path backend.zip --type zip --clean true
+          STARTED=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)  # margin for clock differences with Azure
+          # Upload and return. Waiting inside `az webapp deploy` is one long request that the App Service
+          # gateway cuts off at about 230 s while the build is still running, which failed this step
+          # although the deployment succeeded. Poll the deployment record with short requests instead.
+          az webapp deploy -g "$RG" -n "$APP" --src-path backend.zip --type zip --clean true --async true
+          for i in $(seq 1 90); do
+            read -r RECEIVED STATUS COMPLETE < <(az webapp log deployment list -g "$RG" -n "$APP" \
+              --query "[0:1].[received_time,status,complete]" -o tsv)
+            if [[ "$RECEIVED" > "$STARTED" ]]; then
+              echo "attempt $i: received=$RECEIVED status=$STATUS complete=$COMPLETE"
+              [[ "$COMPLETE" == "True" && "$STATUS" == "4" ]] && exit 0
+              [[ "$STATUS" == "3" ]] && { echo "Deployment failed"; exit 1; }
+            else
+              echo "attempt $i: waiting for App Service to receive the package"
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for the deployment"; exit 1
       - name: Check /healthz
         run: |
           HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
@@ -89,4 +106,6 @@ jobs:
           d = json.load(sys.stdin)
           for t, v in d['tables'].items():
               print(f\"{t:<16}{v['expected']:>10}{v['actual']:>10}\")
-          sys.exit(0 if d['ok'] else 1)"
+          print('signals:', d['signals'])
+          ok = d['ok'] and d['signals']['source'] == 'precomputed'  # computing them on the small plan takes minutes
+          sys.exit(0 if ok else 1)"

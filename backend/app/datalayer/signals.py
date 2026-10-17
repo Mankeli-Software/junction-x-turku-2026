@@ -124,6 +124,16 @@ def _from_file(store: DataStore, day: date) -> list[Hit] | None:
     return None if cache is None else cache.get(day)
 
 
+def cache_status(store: DataStore) -> dict:
+    """Whether the precomputed file is in use, and if not, why. Shown by /v1/data-status."""
+    if not CACHE_FILE.exists():
+        return {"source": "computed on demand", "reason": "no signals_cache.json in the deploy"}
+    cache = load_cache(store)
+    if cache is None:
+        return {"source": "computed on demand", "reason": "signals_cache.json was built for other code or data"}
+    return {"source": "precomputed", "days": len(cache)}
+
+
 class _Strata:
     def __init__(self, store: DataStore):
         self.phenotype = _phenotype_stratum(store)

@@ -53,7 +53,14 @@ def data_status(response: Response):
         response.status_code = 503
         return {"ok": False, "error": "database unavailable"}
     tables = {t: {"expected": n, "actual": actual[t]} for t, n in db.DATASET_ROWS.items()}
-    return {"ok": all(v["expected"] == v["actual"] for v in tables.values()), "tables": tables}
+    from app.datalayer import signals
+    from app.datalayer.store import get_store
+
+    return {
+        "ok": all(v["expected"] == v["actual"] for v in tables.values()),
+        "tables": tables,
+        "signals": signals.cache_status(get_store()),
+    }
 
 
 @app.get("/v1/functions", tags=["meta"])

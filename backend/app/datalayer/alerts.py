@@ -13,6 +13,8 @@ Rules, and why:
   is judged only once it is over (Sunday), and consecutive weeks merge into one alert.
 """
 
+import logging
+import time
 import weakref
 from collections import OrderedDict
 from collections.abc import Callable
@@ -43,6 +45,8 @@ from app.models.alerts import (
     VolumePoint,
 )
 from app.vocab import WARDS
+
+log = logging.getLogger("uvicorn.error")  # has a handler under uvicorn and gunicorn, so it reaches the container log
 
 ACTIVE_DAYS = 28  # an alert is "active" while its first_seen is this recent
 MISSING_MAX_RATIO = 0.3
@@ -181,8 +185,10 @@ def warm_up(store: DataStore) -> None:
     With the precomputed signals file this is instant. Without it the weekly signals are computed
     (about 12 s on a laptop, minutes on the small App Service plan).
     """
+    started = time.perf_counter()
     sig.warm_up(store, _first_eval_day(store), store.tables.cultures["sample_date"].max().date())
     tr.trends(store, store.tables.cultures["sample_date"].max().date())
+    log.info("alert signals ready in %.1fs (%s)", time.perf_counter() - started, sig.cache_status(store))
 
 
 def _eval_days(store: DataStore, as_of: date) -> list[date]:
