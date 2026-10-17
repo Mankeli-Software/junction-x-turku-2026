@@ -1,46 +1,72 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="AMRight">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AMRight: know what works for your patient this week.">
+  <meta name="theme-color" content="#F4F3FC">
   <title>AMRight</title>
+
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@700&family=Inter:wght@400&display=swap" rel="stylesheet">
+
+  <style>
+    html, body { margin: 0; height: 100%; }
+    #amr-loader {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 48px 16px; box-sizing: border-box;
+      color: #1D204E; font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(900px 620px at 0% 0%, #D9D4FB 0%, rgba(217,212,251,0) 70%),
+        radial-gradient(820px 620px at 100% 100%, #F8D2E6 0%, rgba(248,210,230,0) 70%),
+        #FFFFFF;
+      transition: opacity .4s ease;
+    }
+    #amr-loader.amr-done { opacity: 0; pointer-events: none; }
+    .amr-name { font-family: Sora, Inter, sans-serif; font-weight: 700; font-size: clamp(32px, 6vw, 44px); letter-spacing: .01em; }
+    .amr-tag { margin-top: 8px; font-size: 17px; text-align: center; }
+    .amr-progress { margin-top: 48px; width: min(360px, 100%); display: flex; flex-direction: column; gap: 12px; }
+    .amr-track { position: relative; height: 8px; border-radius: 999px; background: #ECEBFA; overflow: hidden; }
+    .amr-fill {
+      position: relative; height: 100%; width: 0%; border-radius: 999px; overflow: hidden;
+      background: linear-gradient(90deg, #635BF1 0%, #A6A1F9 55%, #EA0054 100%);
+      transition: width .25s ease-out;
+    }
+    .amr-fill::after {
+      content: ""; position: absolute; top: 0; bottom: 0; width: 35%;
+      background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.55), rgba(255,255,255,0));
+      animation: amr-shine 1.4s linear infinite;
+    }
+    .amr-label { font-size: 14px; text-align: center; min-height: 20px; }
+    .amr-foot { position: absolute; bottom: 28px; left: 0; right: 0; text-align: center; font-size: 13px; }
+    .amr-zone { transform-origin: 32px 32px; animation: amr-zone 2.4s cubic-bezier(.2,.7,.2,1) infinite alternate; }
+    .amr-ring { transform-origin: 32px 32px; animation: amr-spin 14s linear infinite; }
+    @keyframes amr-zone { 0% { transform: scale(.55); } 60%, 100% { transform: scale(1); } }
+    @keyframes amr-spin { to { transform: rotate(360deg); } }
+    @keyframes amr-shine { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+    @media (prefers-reduced-motion: reduce) {
+      .amr-zone, .amr-ring, .amr-fill::after { animation: none; }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <div id="amr-loader" role="status" aria-live="polite">
+    <div class="amr-name">AMRight</div>
+    <div class="amr-tag">Know what works for your patient this week.</div>
+    <div class="amr-progress">
+      <div class="amr-track" role="progressbar" aria-label="Loading AMRight" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="amr-bar">
+        <div class="amr-fill" id="amr-fill"></div>
+      </div>
+      <div class="amr-label" id="amr-label">Loading the app</div>
+    </div>
+  </div>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

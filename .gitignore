@@ -5,3 +5,6 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 backend/app/signals_cache.json
+
+# Design handoff drops (zips, loose web files)
+Claude outputs/
