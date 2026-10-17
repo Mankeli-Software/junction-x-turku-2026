@@ -18,15 +18,22 @@ if [[ -z "$APP_ID" ]]; then
   az ad sp create --id "$APP_ID" -o none
 fi
 
-cred() { # <name> <subject>
-  if ! az ad app federated-credential list --id "$APP_ID" --query "[?name=='$1'].name" -o tsv | grep -q .; then
-    az ad app federated-credential create --id "$APP_ID" --parameters "{
-      \"name\": \"$1\", \"issuer\": \"https://token.actions.githubusercontent.com\",
-      \"subject\": \"$2\", \"audiences\": [\"api://AzureADTokenExchange\"]}" -o none
+# GitHub's OIDC "sub" claim may use an immutable form (owner and repo ids included). Ask GitHub
+# which prefix this repository uses instead of guessing.
+PREFIX="$(gh api "repos/$REPO/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty' 2>/dev/null || true)"
+PREFIX="${PREFIX:-repo:$REPO}"
+
+cred() { # <name> <subject>; creates the credential or updates its subject
+  local body="{\"name\": \"$1\", \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"$2\", \"audiences\": [\"api://AzureADTokenExchange\"]}"
+  if az ad app federated-credential list --id "$APP_ID" --query "[?name=='$1'].name" -o tsv | grep -q .; then
+    az ad app federated-credential update --id "$APP_ID" --federated-credential-id "$1" --parameters "$body" -o none
+  else
+    az ad app federated-credential create --id "$APP_ID" --parameters "$body" -o none
   fi
 }
-cred github-main "repo:$REPO:ref:refs/heads/main"
-cred github-pr "repo:$REPO:pull_request"
+cred github-main "$PREFIX:ref:refs/heads/main"
+cred github-pr "$PREFIX:pull_request"
 
 # Contributor to deploy resources; User Access Administrator is not needed because the Bicep role
 # assignments are applied by people (deploy.sh), and CI only runs what-if and code deploys.
