@@ -1,0 +1,45 @@
+name: Frontend
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/frontend.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      RG: rg-junctionturku
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Look up the API URL and the Static Web App deployment token
+        run: |
+          APP=$(az webapp list -g "$RG" --query "[?tags.project=='aei' && tags.env=='demo'].name | [0]" -o tsv)
+          echo "API_BASE=https://$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)" >> "$GITHUB_ENV"
+          SWA=$(az staticwebapp list -g "$RG" --query "[?tags.project=='aei' && tags.env=='demo'].name | [0]" -o tsv)
+          TOKEN=$(az staticwebapp secrets list -g "$RG" -n "$SWA" --query properties.apiKey -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "SWA_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter pub get && flutter test
+        working-directory: frontend
+      - run: flutter build web --release --dart-define=API_BASE=${{ env.API_BASE }}
+        working-directory: frontend
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ env.SWA_TOKEN }}
+          action: upload
+          app_location: frontend/build/web
+          skip_app_build: true
+          skip_api_build: true

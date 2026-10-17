@@ -1,0 +1,40 @@
+name: Infra what-if
+
+on:
+  pull_request:
+    paths: ["infra/**", ".github/workflows/infra-whatif.yml"]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  whatif:
+    runs-on: ubuntu-latest
+    env:
+      RG: rg-junctionturku
+      # What-if never sees the real secrets; any value of the right shape will do.
+      AEI_DB_PASSWORD: WhatIfOnlyPassword0123456789abcdef
+      AEI_API_KEY: WhatIfOnlyApiKey0123456789abcdefghijklmnop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - name: What-if
+        run: |
+          az deployment group what-if -g "$RG" -n aei-demo \
+            --parameters infra/main.bicepparam --result-format ResourceIdOnly \
+            --no-pretty-print -o json > whatif.json
+          jq -r '.changes[] | "\(.changeType)  \(.resourceId | split("/providers/") | .[-1])"' whatif.json | sort > whatif.txt
+          cat whatif.txt
+      - name: Comment on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo '### Bicep what-if'; echo '```'; cat whatif.txt; echo '```'; } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md

@@ -1,0 +1,66 @@
+name: Backend
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", "pyproject.toml", ".github/workflows/backend.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: aei, POSTGRES_PASSWORD: aei, POSTGRES_DB: aei }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aei" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -e ".[dev]"
+      - run: ruff check backend
+      - run: pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      RG: rg-junctionturku
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Build the zip (app code plus a requirements.txt for the App Service build)
+        run: |
+          mkdir -p stage && cp -r backend/app stage/app
+          python - <<'PY'
+          import tomllib
+          deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]
+          open("stage/requirements.txt", "w").write("\n".join(deps) + "\n")
+          PY
+          (cd stage && zip -qr ../backend.zip .)
+      - name: Deploy
+        run: |
+          APP=$(az webapp list -g "$RG" --query "[?tags.project=='aei' && tags.env=='demo'].name | [0]" -o tsv)
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          az webapp deploy -g "$RG" -n "$APP" --src-path backend.zip --type zip --clean true
+      - name: Check /healthz
+        run: |
+          HOST=$(az webapp show -g "$RG" -n "$APP" --query defaultHostName -o tsv)
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$HOST/healthz" || true)
+            echo "attempt $i: $code"; [ "$code" = 200 ] && exit 0; sleep 15
+          done
+          exit 1
