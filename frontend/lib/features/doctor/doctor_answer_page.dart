@@ -88,20 +88,23 @@ class _Answer extends StatelessWidget {
   Widget build(BuildContext context) {
     return ColumnGap(
       [
+        // The side column keeps its 380px (a little wider than the design's 320, for balance),
+        // the answer takes the rest.
         FlexSplit(
-          basis: const [560, 320],
-          flex: const [73, 27],
+          basis: const [560, 380],
+          flex: const [999, 1],
+          growFromBasis: true,
           children: [
             NarrowestDrugHero(coverage: coverage),
-            ColumnGap(
-              [
+            // "How sure is this?" takes the height the alert leaves, so both columns end level.
+            FillColumn(
+              gap: AmrSpace.x20,
+              children: [
                 AlertBanner(
                   query: AlertsQuery(ward: profile.ward, status: AlertStatus.active),
                 ),
                 CoverageConfidence(coverage: coverage),
               ],
-              gap: AmrSpace.x20,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
             ),
           ],
         ),

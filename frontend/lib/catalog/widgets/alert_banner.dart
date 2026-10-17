@@ -60,12 +60,37 @@ class AlertBannerView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (slot == WidgetSlot.chat) return _chat(context);
     if (slot == WidgetSlot.card) return _home(context);
+    final style = AmrText.title(context.isShort ? 20 : 24);
     return AmrCard(
       tone: AmrCardTone.alert,
+      padding: const EdgeInsets.all(AmrSpace.x28),
       onTap: () => context.read<CatalogActions>().openAlert(alert.alertId),
       child: ColumnGap([
         DotLabel('Active alert ${alert.onWhere}'),
-        Text(alert.summary, style: AmrText.title(context.isShort ? 20 : 24)),
+        // One short line, as in the design: "E. coli with ESBL: 9 cases in 4 weeks, usually
+        // about 3". The full sentence is on the alert page.
+        switch (alert.type) {
+          _ when alert.title.isEmpty => Text(alert.summary, style: style),
+          AlertType.missingData => Text(alert.summary, style: style),
+          AlertType.sentinel => Text(
+            '${alert.title}: ${patients(alert.nCases)}, every one is reported',
+            style: style,
+          ),
+          _ => QueryView<AlertDetailQuery, AlertDetail>(
+            query: AlertDetailQuery(alertId: alert.alertId),
+            fetch: (repo, q) => repo.alertDetail(q),
+            loading: Text('${alert.title} is rising', style: style),
+            errorMessage: '',
+            builder: (context, d) {
+              final (cases, usual) = _lastFourWeeks(d.epiCurve);
+              final usually = usual < 1 ? 'usually under 1' : 'usually about ${usual.round()}';
+              return Text(
+                '${alert.title}: $cases ${cases == 1 ? 'case' : 'cases'} in 4 weeks, $usually',
+                style: style,
+              );
+            },
+          ),
+        },
         Text(
           'Open the alert',
           style: AmrText.body(15).copyWith(decoration: TextDecoration.underline),
@@ -163,9 +188,7 @@ class _AlertMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final last4 = weeks.length >= 4 ? weeks.sublist(weeks.length - 4) : weeks;
-    final cases = last4.fold<int>(0, (n, w) => n + w.cases);
-    final usual = last4.fold<double>(0, (n, w) => n + w.expected);
+    final (cases, usual) = _lastFourWeeks(weeks);
     final ratio = usual >= 0.5 ? cases / usual : null;
     final (String big, List<String> lines) = alert.type == AlertType.sentinel || ratio == null
         ? (
@@ -297,4 +320,13 @@ class _Dashes extends CustomPainter {
 
   @override
   bool shouldRepaint(_Dashes old) => false;
+}
+
+/// Cases in the last 4 weeks and how many would be usual, from the weekly counts.
+(int, double) _lastFourWeeks(List<EpiPoint> weeks) {
+  final last4 = weeks.length >= 4 ? weeks.sublist(weeks.length - 4) : weeks;
+  return (
+    last4.fold<int>(0, (n, w) => n + w.cases),
+    last4.fold<double>(0, (n, w) => n + w.expected),
+  );
 }

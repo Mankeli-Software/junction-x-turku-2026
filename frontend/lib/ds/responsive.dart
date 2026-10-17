@@ -81,6 +81,7 @@ class FlexSplit extends StatelessWidget {
     this.flex,
     this.gap = AmrSpace.x20,
     this.stretch = true,
+    this.growFromBasis = false,
   });
 
   final List<Widget> children;
@@ -92,6 +93,11 @@ class FlexSplit extends StatelessWidget {
   final List<int>? flex;
   final double gap;
   final bool stretch;
+
+  /// CSS `flex: <flex> 1 <basis>`: each child starts at its [basis] and only the width left
+  /// over is shared by [flex]. `flex: [999, 1]` keeps the second child at its basis, as for a
+  /// fixed side column.
+  final bool growFromBasis;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +115,13 @@ class FlexSplit extends StatelessWidget {
             ],
           );
         }
-        return EqualRow(gap: gap, flex: flex, stretch: stretch, children: children);
+        return EqualRow(
+          gap: gap,
+          flex: flex,
+          basis: growFromBasis ? basis : null,
+          stretch: stretch,
+          children: children,
+        );
       },
     );
   }
@@ -127,21 +139,27 @@ class EqualRow extends MultiChildRenderObjectWidget {
     required super.children,
     this.gap = 0,
     this.flex,
+    this.basis,
     this.stretch = true,
   });
 
   final double gap;
   final List<int>? flex;
+
+  /// Starting widths; [flex] then shares only what is left (see [FlexSplit.growFromBasis]).
+  final List<double>? basis;
   final bool stretch;
 
   @override
-  RenderObject createRenderObject(BuildContext context) => RenderEqualRow(gap, flex, stretch);
+  RenderObject createRenderObject(BuildContext context) =>
+      RenderEqualRow(gap, flex, stretch)..basis = basis;
 
   @override
   void updateRenderObject(BuildContext context, RenderEqualRow renderObject) {
     renderObject
       ..gap = gap
       ..flex = flex
+      ..basis = basis
       ..stretch = stretch;
   }
 }
@@ -167,6 +185,12 @@ class RenderEqualRow extends RenderBox
     markNeedsLayout();
   }
 
+  List<double>? _basis;
+  set basis(List<double>? v) {
+    _basis = v;
+    markNeedsLayout();
+  }
+
   bool _stretch;
   set stretch(bool v) {
     if (v == _stretch) return;
@@ -183,6 +207,11 @@ class RenderEqualRow extends RenderBox
     final weights = [for (var i = 0; i < n; i++) (_flex?[i] ?? 1).toDouble()];
     final total = weights.fold<double>(0, (a, b) => a + b);
     final free = math.max(0.0, width - _gap * (n - 1));
+    final basis = _basis;
+    if (basis != null) {
+      final extra = math.max(0.0, free - basis.take(n).fold<double>(0, (a, b) => a + b));
+      return [for (var i = 0; i < n; i++) basis[i] + extra * weights[i] / total];
+    }
     return [for (final w in weights) free * w / total];
   }
 
@@ -224,6 +253,87 @@ class RenderEqualRow extends RenderBox
       x += widths[i] + _gap;
     }
     size = constraints.constrain(Size(width, height));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) => defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
+/// A column of full-width children whose last child grows to the height the parent asks for,
+/// like CSS `flex: 1` on the last item of a stretched grid cell (an [EqualRow] child). The
+/// widget tree is the same however tall it is, so children keep their state.
+class FillColumn extends MultiChildRenderObjectWidget {
+  const FillColumn({super.key, required super.children, this.gap = 0});
+
+  final double gap;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => RenderFillColumn(gap);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderFillColumn renderObject) =>
+      renderObject.gap = gap;
+}
+
+class _FillColumnParentData extends ContainerBoxParentData<RenderBox> {}
+
+class RenderFillColumn extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _FillColumnParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _FillColumnParentData> {
+  RenderFillColumn(this._gap);
+
+  double _gap;
+  set gap(double v) {
+    if (v == _gap) return;
+    _gap = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _FillColumnParentData) child.parentData = _FillColumnParentData();
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    final kids = getChildrenAsList();
+    final width = BoxConstraints.tightFor(width: constraints.maxWidth);
+    var height = _gap * math.max(0, kids.length - 1);
+    for (final k in kids) {
+      height += k.getDryLayout(width).height;
+    }
+    return constraints.constrain(Size(constraints.maxWidth, height));
+  }
+
+  @override
+  void performLayout() {
+    final kids = getChildrenAsList();
+    final width = constraints.maxWidth;
+    var height = _gap * math.max(0, kids.length - 1);
+    for (final k in kids) {
+      k.layout(BoxConstraints.tightFor(width: width), parentUsesSize: true);
+      height += k.size.height;
+    }
+    final extra = constraints.minHeight - height;
+    if (extra > 0 && kids.isNotEmpty) {
+      final last = kids.last;
+      last.layout(
+        BoxConstraints(minWidth: width, maxWidth: width, minHeight: last.size.height + extra),
+        parentUsesSize: true,
+      );
+    }
+    var y = 0.0;
+    for (final (i, k) in kids.indexed) {
+      if (i > 0) y += _gap;
+      (k.parentData! as _FillColumnParentData).offset = Offset(0, y);
+      y += k.size.height;
+    }
+    size = constraints.constrain(Size(width, y));
   }
 
   @override

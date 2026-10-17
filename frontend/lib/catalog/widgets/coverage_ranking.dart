@@ -275,12 +275,13 @@ class CoverageConfidence extends StatelessWidget {
         lines.firstOrNull;
     final e = pick?.recent.coverage;
     final window = windowLabel(coverage.recent.window);
+    // Three at most, as in the design; the drop shows in the table's "Lower than usual" too.
     final bullets = [
       'Based on ${patients(coverage.recent.nFirstIsolates)} in the $window',
       if (e != null) priorPhrase(e),
       if (e != null && e.smallSample) 'Fewer than 30 patients, so read the range, not the number',
       if (lines.any((l) => l.dropped)) 'Some drugs are lower now than over 12 months',
-    ];
+    ].take(3);
     return AmrCard(
       tone: AmrCardTone.quiet,
       child: Column(
