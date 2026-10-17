@@ -1,3 +1,4 @@
+import os
 import shutil
 from datetime import date
 from pathlib import Path
@@ -185,3 +186,17 @@ def test_counts_loop_and_groupby_agree():
             finally:
                 susc.SMALL_FRAME_ROWS = old
             assert small == big, keys
+
+
+@pytest.mark.skipif(not os.environ.get("TEST_DATABASE_URL"), reason="needs a Postgres holding the loaded dataset")
+def test_tables_from_postgres_equal_the_csv_tables(monkeypatch):
+    """Postgres is the production source: it must hand the data layer exactly what the CSVs do."""
+    monkeypatch.setattr(settings, "database_url", os.environ["TEST_DATABASE_URL"])
+    from_csv = load_tables(source="csv")
+    from_db = load_tables(source="postgres")
+    for name in EXPECTED_COUNTS | {"antibiotics": 0, "wards": 0}:
+        a, b = getattr(from_csv, name), getattr(from_db, name)
+        key = list(a.columns)
+        pd.testing.assert_frame_equal(
+            a.sort_values(key).reset_index(drop=True), b.sort_values(key).reset_index(drop=True), check_dtype=True, obj=name
+        )

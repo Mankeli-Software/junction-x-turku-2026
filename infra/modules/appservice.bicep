@@ -53,6 +53,8 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'CORS_ORIGINS', value: corsOrigins }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
         { name: 'AS_OF_DEFAULT', value: asOfDefault }
+        // The dataset is read from Postgres, not from files (the deploy zip has no CSVs).
+        { name: 'DATA_SOURCE', value: 'postgres' }
         // One instance only; the scheduler is guarded by a Postgres advisory lock anyway.
         { name: 'SCHEDULER_ENABLED', value: 'true' }
       ]

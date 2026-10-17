@@ -71,10 +71,9 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Build the zip (app code, the dataset it reads, and a requirements.txt for the App Service build)
+      - name: Build the zip (app code and a requirements.txt for the App Service build; the data comes from Postgres)
         run: |
-          mkdir -p stage/data && cp -r backend/app stage/app
-          cp -r data/synthetic_microbiology_dataset stage/data/
+          mkdir -p stage && cp -r backend/app stage/app
           python - <<'PY'
           import tomllib
           deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]

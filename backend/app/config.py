@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     agent_fake: bool = False  # stream a fixed screen from a scripted client, no API call
     agent_fallbacks: bool = True  # server-side refusal fallback beta (works with streaming; set false if the API rejects it)
     data_dir: str = _default_data_dir()
+    # Where the dataset is read from. Azure sets "postgres"; "csv" is for local work and the unit tests.
+    data_source: Literal["csv", "postgres"] = "csv"
 
     @field_validator("anthropic_api_key")
     @classmethod

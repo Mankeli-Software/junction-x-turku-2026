@@ -4,7 +4,9 @@ Results are cached in memory keyed on as_of. Nothing after as_of is visible in a
 view, so replaying an earlier date gives the numbers that date would have shown.
 """
 
+import logging
 import threading
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -24,6 +26,8 @@ EXPECTED_COUNTS = {
     "susceptibility": 172_381,
 }
 
+log = logging.getLogger("uvicorn.error")
+
 FIRSTS_CACHE_SIZE = 128
 SIR_FILTER_COLUMNS = ("specimen", "organism", "antibiotic_code", "sex", "age_band", "onset")
 STRATA_CACHE_SIZE = 256
@@ -40,16 +44,60 @@ class Tables:
     wards: pd.DataFrame
 
 
-def load_tables(data_dir: str | Path | None = None, check_counts: bool = True) -> Tables:
-    d = Path(data_dir or settings.data_dir)
-    tables = Tables(
-        patients=pd.read_csv(d / "patients.csv"),
-        cultures=pd.read_csv(d / "cultures.csv", parse_dates=["sample_date", "admission_date"]),
-        isolates=pd.read_csv(d / "isolates.csv"),
-        susceptibility=pd.read_csv(d / "susceptibility.csv"),
-        antibiotics=pd.read_csv(d / "antibiotics.csv"),
-        wards=pd.read_csv(d / "wards.csv"),
-    )
+TABLE_COLUMNS = {  # the CSV columns, in file order, per table; the order by is the primary key
+    "patients": ("patient_id", "sex", "birth_year", "home_area"),
+    "cultures": (
+        "culture_id", "patient_id", "age_years", "sample_date", "iso_year", "iso_week", "ward_code", "ward_fi",
+        "ward_en", "ward_type", "institution", "admission_date", "specimen", "specimen_fi", "result", "n_isolates",
+    ),
+    "isolates": ("isolate_id", "culture_id", "isolate_no", "organism", "quantity", "esbl", "mrsa", "vre", "cpe"),
+    "susceptibility": None,  # all columns
+    "antibiotics": None,
+    "wards": None,
+}
+ORDER_BY = {
+    "patients": "patient_id", "cultures": "culture_id", "isolates": "isolate_id",
+    "susceptibility": "isolate_id, antibiotic_code", "antibiotics": "antibiotic_code", "wards": "ward_code",
+}
+DATE_COLUMNS = {"cultures": ["sample_date", "admission_date"]}
+
+
+def _read_csv_tables(d: Path) -> dict[str, pd.DataFrame]:
+    return {
+        "patients": pd.read_csv(d / "patients.csv"),
+        "cultures": pd.read_csv(d / "cultures.csv", parse_dates=["sample_date", "admission_date"]),
+        "isolates": pd.read_csv(d / "isolates.csv"),
+        "susceptibility": pd.read_csv(d / "susceptibility.csv"),
+        "antibiotics": pd.read_csv(d / "antibiotics.csv"),
+        "wards": pd.read_csv(d / "wards.csv"),
+    }
+
+
+def _read_postgres_tables() -> dict[str, pd.DataFrame]:
+    """The six tables from Postgres, shaped exactly like the CSVs (columns, dtypes, missing as NaN)."""
+    from app.db import connect  # imported here so the csv path never needs a database
+
+    out: dict[str, pd.DataFrame] = {}
+    with connect(timeout=15) as conn:
+        for name, cols in TABLE_COLUMNS.items():
+            select = ", ".join(cols) if cols else "*"
+            cur = conn.execute(f"SELECT {select} FROM {name} ORDER BY {ORDER_BY[name]}")  # names are constants
+            frame = pd.DataFrame(cur.fetchall(), columns=[c.name for c in cur.description])
+            for col in DATE_COLUMNS.get(name, []):
+                frame[col] = pd.to_datetime(frame[col])
+            for col in frame.columns[frame.dtypes == object]:
+                frame[col] = frame[col].where(frame[col].notna(), np.nan)  # NULL -> NaN, as read_csv does
+            out[name] = frame
+    return out
+
+
+def load_tables(data_dir: str | Path | None = None, check_counts: bool = True, source: str | None = None) -> Tables:
+    source = source or settings.data_source
+    raw = _read_postgres_tables() if source == "postgres" else _read_csv_tables(Path(data_dir or settings.data_dir))
+    for name, cols in DATE_COLUMNS.items():
+        for col in cols:  # one resolution whatever the source or pandas version parsed
+            raw[name][col] = pd.to_datetime(raw[name][col]).dt.as_unit("ns")
+    tables = Tables(**raw)
     if check_counts:
         for name, expected in EXPECTED_COUNTS.items():
             got = len(getattr(tables, name))
@@ -164,5 +212,7 @@ _store: DataStore | None = None
 def get_store() -> DataStore:
     global _store
     if _store is None:
+        started = time.perf_counter()
         _store = DataStore(load_tables())
+        log.info("dataset loaded from %s in %.1f s", settings.data_source, time.perf_counter() - started)
     return _store
