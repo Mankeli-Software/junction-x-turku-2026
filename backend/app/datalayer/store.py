@@ -4,6 +4,7 @@ Results are cached in memory keyed on as_of. Nothing after as_of is visible in a
 view, so replaying an earlier date gives the numbers that date would have shown.
 """
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -20,6 +21,8 @@ EXPECTED_COUNTS = {
     "isolates": 24_571,
     "susceptibility": 172_381,
 }
+
+FIRSTS_CACHE_SIZE = 128
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,10 @@ def first_isolates(frame: pd.DataFrame, date_from: date, date_to: date) -> pd.Da
 
     Deduplicating inside the window (not over all history) keeps a repeat infection
     visible in a 4-week view even if the patient had the same organism earlier.
+    The dedup is hospital-wide: the isolate counts for the ward where the patient first had
+    it in the window (CLSI M39). Over 12 months this counts fewer isolates per ward than
+    per-ward dedup would (URO 541 against 612 at the end of the data); at 28 days it makes
+    almost no difference.
     """
     in_window = frame[(frame["sample_date"] >= pd.Timestamp(date_from)) & (frame["sample_date"] <= pd.Timestamp(date_to))]
     ordered = in_window.sort_values(["sample_date", "culture_id", "isolate_no"])
@@ -88,21 +95,25 @@ def first_isolates(frame: pd.DataFrame, date_from: date, date_to: date) -> pd.Da
 class DataStore:
     def __init__(self, tables: Tables):
         self.tables = tables
-        self._frame = build_isolate_frame(tables)
-        self._views: dict[date, pd.DataFrame] = {}
-        self._firsts: dict[tuple, pd.DataFrame] = {}
+        self._frame = build_isolate_frame(tables)  # sorted by sample_date
+        self._firsts: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
+        sir_cols = ["isolate_id", "antibiotic_code", "result"]
+        self.sir = self._frame.merge(tables.susceptibility[sir_cols], on="isolate_id", how="inner")
 
     def isolates(self, as_of: date) -> pd.DataFrame:
-        """All isolates sampled on or before as_of."""
-        if as_of not in self._views:
-            self._views[as_of] = self._frame[self._frame["sample_date"] <= pd.Timestamp(as_of)]
-        return self._views[as_of]
+        """All isolates sampled on or before as_of (a slice of the sorted frame, not a copy)."""
+        end = self._frame["sample_date"].searchsorted(pd.Timestamp(as_of), side="right")
+        return self._frame.iloc[:end]
 
     def first_isolates(self, as_of: date, window: str = "28d", date_from: date | None = None, date_to: date | None = None) -> pd.DataFrame:
         start, end = window_dates(as_of, window, date_from, date_to)
         key = (as_of, start, end)
-        if key not in self._firsts:
+        if key in self._firsts:
+            self._firsts.move_to_end(key)
+        else:
             self._firsts[key] = first_isolates(self.isolates(as_of), start, end)
+            if len(self._firsts) > FIRSTS_CACHE_SIZE:
+                self._firsts.popitem(last=False)
         return self._firsts[key]
 
     def susceptibility(self, isolates: pd.DataFrame) -> pd.DataFrame:

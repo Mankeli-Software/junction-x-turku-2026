@@ -3,7 +3,7 @@ from datetime import date
 from pydantic import BaseModel, Field
 
 from app.models.common import Estimate, ProfileQuery, WindowOut, WindowQuery
-from app.vocab import Drug, Interpretation, Organism, Specimen, Ward
+from app.vocab import AgeBand, Drug, Interpretation, Onset, Organism, Sex, Specimen, Ward
 
 
 # organisms
@@ -58,6 +58,9 @@ class SusceptibilityQuery(WindowQuery):
     specimen: Specimen | None = None
     organism: Organism | None = None
     drug: Drug | None = None
+    sex: Sex | None = None
+    age_band: AgeBand | None = None
+    onset: Onset | None = None
 
 
 class SirCounts(BaseModel):
@@ -73,6 +76,9 @@ class SusceptibilityRow(BaseModel):
     drug: Drug
     counts: SirCounts
     resistance: Estimate
+    outbreak_inflated: bool = Field(False, description="12-month ward rate is lifted by a past outbreak")
+    rate_without_outbreak: float | None = Field(None, description="12-month raw rate without the outbreak weeks")
+    note: str | None = None
 
 
 class SusceptibilityWindowOut(BaseModel):
@@ -107,7 +113,9 @@ class SeriesOut(BaseModel):
     organism: Organism
     drug: Drug
     as_of: date
-    series: dict[str, list[WeeklyPoint]] = Field(description="by ward; 'hospital' is the prior")
+    series: dict[str, list[WeeklyPoint]] = Field(
+        description="by ward; 'hospital' is the 12-month hospital rate at the top of the prior chain"
+    )
 
 
 __all__ = ["Interpretation"]

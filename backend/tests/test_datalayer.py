@@ -9,11 +9,11 @@ from app.datalayer import derive
 from app.datalayer.store import (
     EXPECTED_COUNTS,
     DataStore,
-    Tables,
     first_isolates,
     load_tables,
     window_dates,
 )
+from helpers import AS_OF_DATES, cut_tables
 
 
 def ts(*days):
@@ -96,16 +96,6 @@ def test_window_dates():
 # --- the real data ----------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def tables():
-    return load_tables()  # asserts 10,000 / 46,792 / 24,571 / 172,381
-
-
-@pytest.fixture(scope="module")
-def store(tables):
-    return DataStore(tables)
-
-
 def test_row_counts(tables):
     for name, n in EXPECTED_COUNTS.items():
         assert len(getattr(tables, name)) == n
@@ -129,23 +119,6 @@ def test_derived_columns_on_real_data(store):
     assert f["sex"].notna().all()
     # only inpatient wards can be hospital-onset
     assert set(f[f["onset"] == "hospital"]["ward_type"]) == {"in"}
-
-
-AS_OF_DATES = [date(2024, 6, 30), date(2025, 1, 15), date(2025, 8, 31), date(2025, 12, 31), date(2026, 5, 20)]
-
-
-def cut_tables(t: Tables, as_of: date) -> Tables:
-    """The data as it would have existed on as_of: no culture after it."""
-    cultures = t.cultures[t.cultures["sample_date"] <= pd.Timestamp(as_of)]
-    ids = set(cultures["culture_id"])
-    return Tables(
-        patients=t.patients,
-        cultures=cultures,
-        isolates=t.isolates[t.isolates["culture_id"].isin(ids)],
-        susceptibility=t.susceptibility[t.susceptibility["culture_id"].isin(ids)],
-        antibiotics=t.antibiotics,
-        wards=t.wards,
-    )
 
 
 @pytest.mark.parametrize("as_of", AS_OF_DATES)

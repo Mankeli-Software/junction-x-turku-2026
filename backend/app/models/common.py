@@ -20,6 +20,8 @@ class WindowQuery(BaseModel):
     def _custom_needs_dates(self):
         if self.window == "custom" and not (self.date_from and self.date_to):
             raise ValueError("window=custom needs date_from and date_to")
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("date_from must not be after date_to")
         return self
 
 
@@ -51,3 +53,4 @@ class Estimate(BaseModel):
     prior_level: PriorLevel
     prior_weight: float = Field(ge=0, le=1, description="share of the estimate from the prior")
     small_sample: bool = Field(description="n below the minimum: show the range, not a percentage")
+    raw_rate: float | None = Field(None, description="unshrunk rate, given only when n is at least the minimum")

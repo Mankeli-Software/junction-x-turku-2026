@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+from app.datalayer.store import window_dates
 from app.models.common import Estimate, WindowOut
 from app.models.data import (
     CoverageOut,
@@ -16,16 +17,12 @@ from app.models.data import (
     SusceptibilityWindowOut,
     WeeklyPoint,
 )
-from app.vocab import MIN_ISOLATES, WINDOW_DAYS
+from app.vocab import MIN_ISOLATES
 
 
 def window_out(window: str, as_of: date, date_from: date | None, date_to: date | None) -> WindowOut:
-    if window == "custom":
-        assert date_from and date_to
-        return WindowOut(window=window, as_of=as_of, date_from=date_from, date_to=date_to)
-    return WindowOut(
-        window=window, as_of=as_of, date_from=as_of - timedelta(days=WINDOW_DAYS[window] - 1), date_to=as_of
-    )
+    start, end = window_dates(as_of, window, date_from, date_to)  # never past as_of
+    return WindowOut(window=window, as_of=as_of, date_from=start, date_to=end)
 
 
 def estimate(value: float, n: int, level: str = "ward") -> Estimate:

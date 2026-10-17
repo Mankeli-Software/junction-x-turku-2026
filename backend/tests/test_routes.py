@@ -56,3 +56,20 @@ def test_healthz_and_cors():
         headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"},
     )
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_window_is_clipped_to_as_of():
+    r = client.get("/v1/susceptibility?ward=URO&window=custom&date_from=2026-09-01&date_to=2026-12-31&as_of=2026-09-27")
+    assert r.status_code == 200
+    assert r.json()["recent"]["window"]["date_to"] == "2026-09-27"
+
+
+def test_reversed_dates_rejected():
+    assert client.get("/v1/susceptibility?window=custom&date_from=2026-02-01&date_to=2026-01-01").status_code == 422
+
+
+def test_outbreak_flag_reaches_the_api():
+    r = client.get("/v1/susceptibility?ward=URO&organism=Escherichia%20coli&drug=CRO&specimen=urine&as_of=2025-12-07")
+    row = r.json()["annual"]["rows"][0]
+    assert row["outbreak_inflated"] and row["note"]
+    assert row["rate_without_outbreak"] < row["counts"]["r"] / (row["counts"]["s"] + row["counts"]["r"])
