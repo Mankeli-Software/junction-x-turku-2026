@@ -240,18 +240,52 @@ class _LinePainter extends CustomPainter {
 
     if (progress < 1) return;
 
-    // End dots and labels ("Women", "Men").
+    // End dots and labels ("Women", "Men"). Lines that end close together would print their
+    // labels on top of each other, so the labels are pushed apart; a thin line in the series
+    // colour joins a moved label to its dot.
     if (endLabels) {
+      final ends = <({ChartSeries s, Offset at, TextPainter tp, double top})>[];
       for (final s in series) {
         final last = s.points.lastOrNull;
         if (last == null) continue;
         final at = Offset(sx(last.x), sy(last.y));
-        canvas.drawCircle(at, 5, Paint()..color = s.color);
         final tp = _text(s.label, endStyle);
+        final top = endLabelsAbove ? at.dy - 10 - tp.height : at.dy - tp.height / 2;
+        ends.add((s: s, at: at, tp: tp, top: top));
+      }
+      const gap = 3.0;
+      // Beside the line: push down from the top one. Above it: stack upwards from the lowest.
+      ends.sort((x, y) => endLabelsAbove ? y.top.compareTo(x.top) : x.top.compareTo(y.top));
+      final tops = <double>[];
+      for (final e in ends) {
+        if (tops.isEmpty) {
+          tops.add(e.top);
+        } else {
+          final prev = tops.last;
+          tops.add(
+            endLabelsAbove
+                ? math.min(e.top, prev - e.tp.height - gap)
+                : math.max(e.top, prev + e.tp.height + gap),
+          );
+        }
+      }
+      for (var i = 0; i < ends.length; i++) {
+        final e = ends[i];
+        canvas.drawCircle(e.at, 5, Paint()..color = e.s.color);
         final pos = endLabelsAbove
-            ? Offset(at.dx - tp.width, at.dy - 10 - tp.height)
-            : Offset(at.dx + 11, at.dy - tp.height / 2);
-        tp.paint(canvas, pos);
+            ? Offset(e.at.dx - e.tp.width, tops[i])
+            : Offset(e.at.dx + 11, tops[i]);
+        if ((tops[i] - e.top).abs() > 0.5) {
+          final to = Offset(endLabelsAbove ? e.at.dx : pos.dx - 2, tops[i] + e.tp.height / 2);
+          canvas.drawLine(
+            e.at,
+            to,
+            Paint()
+              ..color = e.s.color
+              ..strokeWidth = 1.2,
+          );
+        }
+        e.tp.paint(canvas, pos);
       }
     }
 
