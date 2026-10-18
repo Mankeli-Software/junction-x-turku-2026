@@ -36,7 +36,7 @@ class PatientFormState extends Equatable {
   /// The word being chosen; null once every word is confirmed ("All set").
   final PatientField? active;
 
-  /// Words the user has gone through (an "Edit details" patient counts only once picked).
+  /// Words the user has gone through (every word an "Edit details" patient already has).
   final Set<PatientField> confirmed;
 
   bool get done => active == null;
@@ -52,8 +52,30 @@ class PatientFormState extends Equatable {
 /// last word the form is "All set" and offers "Show what works".
 class PatientFormCubit extends Cubit<PatientFormState> {
   PatientFormCubit({PatientProfile? initial})
-    // Starts blank on the first word; a patient from "Edit details" stays filled in.
-    : super(PatientFormState(profile: initial ?? const PatientProfile()));
+    // Starts blank on the first word. A patient from "Edit details" opens as it was left on
+    // the front page: its words confirmed and "All set" (or on the first missing word), so
+    // changing one word comes straight back to "Show what works".
+    : super(initial == null ? const PatientFormState(profile: PatientProfile()) : _filled(initial));
+
+  static PatientFormState _filled(PatientProfile p) {
+    final confirmed = {
+      for (final f in PatientField.values)
+        if (_isSet(f, p)) f,
+    };
+    return PatientFormState(
+      profile: p,
+      active: PatientField.values.where((f) => !confirmed.contains(f)).firstOrNull,
+      confirmed: confirmed,
+    );
+  }
+
+  static bool _isSet(PatientField f, PatientProfile p) => switch (f) {
+    PatientField.sex => p.sex != null,
+    PatientField.age => p.ageBand != null,
+    PatientField.ward => p.ward != null,
+    PatientField.infection => p.infectionType != null,
+    PatientField.onset => p.onset != null,
+  };
 
   void focus(PatientField field) =>
       emit(PatientFormState(profile: state.profile, active: field, confirmed: state.confirmed));

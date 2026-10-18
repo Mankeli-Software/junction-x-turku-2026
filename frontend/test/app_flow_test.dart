@@ -1,6 +1,7 @@
 import 'package:amiright/app/app.dart';
 import 'package:amiright/core/api/transport.dart';
 import 'package:amiright/features/chat/widgets/chat_blocks.dart';
+import 'package:amiright/features/doctor/patient_form.dart';
 import 'package:amiright/session/session_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +67,22 @@ void main() {
     expect(find.text('Selected patient'), findsOneWidget);
     expect(find.text('All antibiotics'), findsOneWidget);
     expect(find.textContaining('not a prescription'), findsOneWidget);
+
+    // "Edit details" opens the form as it was left: all set, and changing one word comes
+    // straight back to "Show what works" instead of walking through the rest.
+    await tester.tap(find.text('Edit details'));
+    await tester.pumpAndSettle();
+    expect(find.text('All set'), findsOneWidget);
+    expect(find.text('Show what works'), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byType(PatientForm), matching: find.text('Urology')));
+    await tester.pumpAndSettle();
+    expect(find.text('Step 3 of 5'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+    await tester.pumpAndSettle();
+    expect(find.text('All set'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.text('Selected patient'), findsOneWidget);
 
     // "New patient" starts over: a fresh form on the first word, no answer button.
     await tester.tap(find.text('New patient'));
